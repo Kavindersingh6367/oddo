@@ -18,7 +18,9 @@ const state = {
     sharedTrip: null,
     searchQuery: '',
     selectedRegion: 'all',
-    selectedCategory: 'all'
+    selectedCategory: 'all',
+    currentTripWeather: null,
+    weatherAlertDismissed: {}
 };
 
 // ================= API Client =================
@@ -618,7 +620,10 @@ async function renderItineraryBuilder() {
 
     main.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading full itinerary plan & intelligence...</div>`;
 
-    const res = await apiRequest(`/api/v1/trips/${state.currentTripId}`);
+    const [res, weatherRes] = await Promise.all([
+        apiRequest(`/api/v1/trips/${state.currentTripId}`),
+        apiRequest(`/api/v1/trips/${state.currentTripId}/weather-analysis`)
+    ]);
     if (!res.success || !res.trip) {
         showToast(res.error || 'Failed to load trip', 'error');
         navigateTo('trips');
@@ -627,6 +632,7 @@ async function renderItineraryBuilder() {
 
     const trip = res.trip;
     state.currentTrip = trip;
+    state.currentTripWeather = (weatherRes && weatherRes.success) ? weatherRes.analysis : null;
 
     let html = `
         <!-- Itinerary Header Banner -->
@@ -645,6 +651,15 @@ async function renderItineraryBuilder() {
                                 <i class="fa-solid fa-hotel"></i> ${trip.hotels.length} Hotel${trip.hotels.length > 1 ? 's' : ''} (${formatCurrency(trip.hotels.reduce((s, h) => s + Number(h.total_cost || 0), 0), trip.currency)})
                             </span>
                         ` : ''}
+                        ${(() => {
+                            const w = state.currentTripWeather;
+                            const alerts = w ? (w.high_risk_count + w.moderate_risk_count) : 0;
+                            if (alerts > 0) {
+                                return `<span class="badge-chip warning" onclick="switchItineraryView('weather')" style="cursor: pointer;" title="View Weather Intelligence"><i class="fa-solid fa-cloud-bolt"></i> Weather: ${alerts} Alert${alerts > 1 ? 's' : ''}</span>`;
+                            } else {
+                                return `<span class="badge-chip success" onclick="switchItineraryView('weather')" style="cursor: pointer;" title="View Weather Forecast"><i class="fa-solid fa-sun"></i> Weather: Optimal</span>`;
+                            }
+                        })()}
                     </div>
                 </div>
                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
@@ -669,6 +684,13 @@ async function renderItineraryBuilder() {
                     <button class="btn btn-sm ${state.viewMode === 'budget' ? 'btn-primary' : 'btn-outline'}" onclick="switchItineraryView('budget')">
                         <i class="fa-solid fa-chart-pie"></i> Budget &amp; Intelligence
                     </button>
+                    <button class="btn btn-sm ${state.viewMode === 'weather' ? 'btn-primary' : 'btn-outline'}" onclick="switchItineraryView('weather')">
+                        <i class="fa-solid fa-cloud-sun-rain"></i> Weather Assistant ${(() => {
+                            const w = state.currentTripWeather;
+                            const alerts = w ? (w.high_risk_count + w.moderate_risk_count) : 0;
+                            return alerts > 0 ? `<span style="background: var(--danger); color:#fff; border-radius: 9999px; padding: 1px 6px; font-size: 0.72rem; margin-left: 4px; font-weight: 700;">${alerts}</span>` : '';
+                        })()}
+                    </button>
                     <button class="btn btn-sm ${state.viewMode === 'presentation' ? 'btn-primary' : 'btn-outline'}" onclick="switchItineraryView('presentation')">
                         <i class="fa-solid fa-tv"></i> Presentation Mode
                     </button>
@@ -684,6 +706,8 @@ async function renderItineraryBuilder() {
     // Render Sub-Views based on state.viewMode
     if (state.viewMode === 'builder') {
         html += renderBuilderScheduleView(trip);
+    } else if (state.viewMode === 'weather') {
+        html += renderWeatherItineraryView(trip, state.currentTripWeather);
     } else if (state.viewMode === 'calendar') {
         html += renderCalendarGridView(trip);
     } else if (state.viewMode === 'timeline') {
@@ -942,12 +966,30 @@ function renderBuilderScheduleView(trip) {
     // Generate day blocks
     for (let dayNum = 1; dayNum <= durationDays; dayNum++) {
         let dayDateStr = '';
+        let isoDateStr = '';
         try {
             const d = new Date(trip.start_date);
             d.setDate(d.getDate() + (dayNum - 1));
             dayDateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+            isoDateStr = d.toISOString().split('T')[0];
         } catch(e) {}
 
+        // Find day weather
+        let dayWeather = null;
+        if (state.currentTripWeather && state.currentTripWeather.city_forecasts) {
+            for (const cid in state.currentTripWeather.city_forecasts) {
+                const fc = state.currentTripWeather.city_forecasts[cid];
+                if (fc && fc.days) {
+                    const match = fc.days.find(d => d.date === isoDateStr);
+                    if (match) {
+                        dayWeather = match;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Filter activities for this day
         const dayActivities = activities.filter(a => Number(a.day_number) === dayNum);
         const dayCost = dayActivities.reduce((sum, a) => sum + Number(a.estimated_cost || 0), 0);
 
@@ -957,6 +999,11 @@ function renderBuilderScheduleView(trip) {
                     <div class="day-header-left">
                         <span class="day-pill">DAY ${dayNum}</span>
                         <div class="day-title-text">${dayDateStr}</div>
+                        ${dayWeather ? `
+                            <span class="day-weather-chip ${dayWeather.weather_type}" onclick="switchItineraryView('weather')" style="cursor: pointer;" title="${dayWeather.condition} â€¢ Rain: ${dayWeather.precipitation_mm}mm â€¢ Wind: ${dayWeather.wind_speed_kmh}km/h">
+                                <i class="fa-solid ${dayWeather.icon}"></i> ${dayWeather.temp_max}Â°C ${dayWeather.condition}
+                            </span>
+                        ` : ''}
                     </div>
                     <div style="display: flex; align-items: center; gap: 1rem;">
                         <span style="font-weight: 700; font-size: 0.95rem; color: var(--text-muted);">
@@ -979,32 +1026,86 @@ function renderBuilderScheduleView(trip) {
         } else {
             dayActivities.forEach(act => {
                 const secType = act.section_type || 'activity';
+                const evalAct = (state.currentTripWeather && state.currentTripWeather.evaluated_activities) 
+                    ? state.currentTripWeather.evaluated_activities.find(a => a.id === act.id) 
+                    : null;
+                const risk = evalAct ? evalAct.risk_analysis : null;
+                const suggestions = evalAct ? (evalAct.suggestions || []) : [];
+                const isDismissed = state.weatherAlertDismissed && state.weatherAlertDismissed[act.id];
+                const hasWeatherAlert = risk && risk.risk_level !== 'safe' && !isDismissed;
+
                 html += `
-                    <div class="activity-item-card">
-                        <div class="act-left-block">
-                            <div class="act-time-badge">${escapeHtml(act.scheduled_time || '10:00')}</div>
-                            <div class="act-details">
-                                <div style="display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;">
-                                    <span class="act-name">${escapeHtml(act.name)}</span>
-                                    <span class="section-type-badge ${secType}">${secType}</span>
+                    <div class="activity-item-card" style="${hasWeatherAlert ? 'border-color: #FCA5A5;' : ''}">
+                        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                            <div class="act-left-block">
+                                <div class="act-time-badge">${escapeHtml(act.scheduled_time || '10:00')}</div>
+                                <div class="act-details">
+                                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                                        <span class="act-name">${escapeHtml(act.name)}</span>
+                                        <span class="section-type-badge ${secType}">${secType}</span>
+                                        ${hasWeatherAlert ? `
+                                            <span class="badge-chip warning" style="font-size: 0.72rem; padding: 2px 8px;">
+                                                <i class="fa-solid fa-triangle-exclamation"></i> Weather Risk
+                                            </span>
+                                        ` : (risk && !risk.is_outdoor ? `
+                                            <span class="badge-chip" style="font-size: 0.72rem; padding: 2px 8px; background: #F1F5F9; color: #475569;">
+                                                <i class="fa-solid fa-house"></i> Indoor
+                                            </span>
+                                        ` : '')}
+                                    </div>
+                                    <div class="act-meta-tags">
+                                        <span class="category-tag ${act.category || 'sightseeing'}">${escapeHtml(act.category || 'sightseeing')}</span>
+                                        <span><i class="fa-regular fa-clock"></i> ${act.duration_hours || 2}h</span>
+                                        ${act.city_name ? `<span><i class="fa-solid fa-location-dot"></i> ${escapeHtml(act.city_name)}</span>` : ''}
+                                        ${act.location_address ? `<span><i class="fa-solid fa-map-pin"></i> ${escapeHtml(act.location_address)}</span>` : ''}
+                                    </div>
                                 </div>
-                                <div class="act-meta-tags">
-                                    <span class="category-tag ${act.category || 'sightseeing'}">${escapeHtml(act.category || 'sightseeing')}</span>
-                                    <span><i class="fa-regular fa-clock"></i> ${act.duration_hours || 2}h</span>
-                                    ${act.city_name ? `<span><i class="fa-solid fa-location-dot"></i> ${escapeHtml(act.city_name)}</span>` : ''}
-                                    ${act.location_address ? `<span><i class="fa-solid fa-map-pin"></i> ${escapeHtml(act.location_address)}</span>` : ''}
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 1.25rem;">
+                                <div class="act-cost-badge">${formatCurrency(act.estimated_cost, trip.currency)}</div>
+                                <div style="display: flex; gap: 0.35rem;">
+                                    <button class="btn btn-subtle btn-sm" onclick="openMoveActivityModal(${trip.id}, ${act.id}, ${dayNum}, ${durationDays})" title="Move to another Day"><i class="fa-solid fa-arrow-right-arrow-left"></i></button>
+                                    <button class="btn btn-subtle btn-sm" onclick="handleDuplicateActivity(${trip.id}, ${act.id})" title="Duplicate"><i class="fa-regular fa-clone"></i></button>
+                                    <button class="btn btn-subtle btn-sm" onclick="openEditActivityModal(${trip.id}, ${act.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                                    <button class="btn btn-danger-outline btn-sm" onclick="handleDeleteActivity(${trip.id}, ${act.id})" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
                                 </div>
                             </div>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 1.25rem;">
-                            <div class="act-cost-badge">${formatCurrency(act.estimated_cost, trip.currency)}</div>
-                            <div style="display: flex; gap: 0.35rem;">
-                                <button class="btn btn-subtle btn-sm" onclick="openMoveActivityModal(${trip.id}, ${act.id}, ${dayNum}, ${durationDays})" title="Move to another Day"><i class="fa-solid fa-arrow-right-arrow-left"></i></button>
-                                <button class="btn btn-subtle btn-sm" onclick="handleDuplicateActivity(${trip.id}, ${act.id})" title="Duplicate"><i class="fa-regular fa-clone"></i></button>
-                                <button class="btn btn-subtle btn-sm" onclick="openEditActivityModal(${trip.id}, ${act.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
-                                <button class="btn btn-danger-outline btn-sm" onclick="handleDeleteActivity(${trip.id}, ${act.id})" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
+
+                        ${hasWeatherAlert ? `
+                            <div class="activity-weather-alert-box ${risk.risk_level}-risk" id="weather-alert-${act.id}">
+                                <div class="weather-alert-header ${risk.risk_level}-risk">
+                                    <i class="fa-solid fa-triangle-exclamation"></i>
+                                    <span>${escapeHtml(risk.alert_title)}</span>
+                                </div>
+                                <div class="weather-alert-text">
+                                    ${escapeHtml(risk.alert_description)}
+                                </div>
+                                ${suggestions.length > 0 ? `
+                                    <div class="weather-suggest-box">
+                                        <div class="weather-suggest-header">
+                                            <i class="fa-solid fa-wand-magic-sparkles"></i> Suggested Adjustment:
+                                        </div>
+                                        <div class="weather-suggest-text">
+                                            ${escapeHtml(suggestions[0].description)}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                                <div class="weather-action-buttons">
+                                    ${suggestions.length > 0 ? `
+                                        <button class="btn-weather-apply" onclick="handleApplyWeatherSuggestion(${trip.id}, ${act.id}, '${suggestions[0].type}', ${escapeHtml(JSON.stringify(suggestions[0]))})">
+                                            <i class="fa-solid fa-wand-magic-sparkles"></i> ${escapeHtml(suggestions[0].action_label || 'Apply Suggestion')}
+                                        </button>
+                                    ` : ''}
+                                    <button class="btn-weather-dismiss" onclick="handleDismissWeatherAlert(${act.id})">
+                                        <i class="fa-solid fa-check"></i> Keep Original Plan
+                                    </button>
+                                    <button class="btn-weather-dismiss" onclick="switchItineraryView('weather')">
+                                        <i class="fa-solid fa-cloud-sun-rain"></i> Weather Assistant
+                                    </button>
+                                </div>
                             </div>
-                        </div>
+                        ` : ''}
                     </div>
                 `;
             });
@@ -4387,3 +4488,408 @@ window.addEventListener('DOMContentLoaded', async () => {
     navigateTo('dashboard');
 });
 
+
+// ================= View: Weather-Aware Itinerary Assistant =================
+function renderWeatherItineraryView(trip, weatherAnalysis) {
+    if (!weatherAnalysis) {
+        return `
+            <div style="background: var(--bg-surface); border-radius: var(--radius-xl); padding: 3rem; text-align: center; border: 1px solid var(--border-color);">
+                <i class="fa-solid fa-cloud-sun-rain" style="font-size: 3rem; color: var(--primary); margin-bottom: 1rem;"></i>
+                <h2>Weather Analysis in Progress</h2>
+                <p style="color: var(--text-muted); margin-bottom: 1.5rem;">Fetching live global forecasts and analyzing activity outdoor safety...</p>
+                <button class="btn btn-primary" onclick="renderItineraryBuilder()"><i class="fa-solid fa-rotate"></i> Refresh Weather Intelligence</button>
+            </div>
+        `;
+    }
+
+    const w = weatherAnalysis;
+    const evaluatedActs = w.evaluated_activities || [];
+    const highRiskActs = evaluatedActs.filter(a => a.risk_analysis && a.risk_analysis.risk_level === 'high');
+    const modRiskActs = evaluatedActs.filter(a => a.risk_analysis && a.risk_analysis.risk_level === 'moderate');
+    const safeActs = evaluatedActs.filter(a => !a.risk_analysis || a.risk_analysis.risk_level === 'safe');
+    const totalAlerts = highRiskActs.length + modRiskActs.length;
+
+    let html = `
+        <!-- Weather Intelligence Hero Banner -->
+        <div class="weather-hero-banner">
+            <div class="weather-hero-content">
+                <div class="weather-hero-title">
+                    <i class="fa-solid fa-cloud-bolt" style="color: #FDBA74;"></i>
+                    Weather-Aware Itinerary Intelligence
+                </div>
+                <div class="weather-hero-desc">
+                    Real-time meteorological analysis evaluating outdoor activity exposure, precipitation probability, wind velocities, and thermal comfort across all scheduled trip destinations.
+                </div>
+                <div class="weather-hero-stats">
+                    <div class="weather-hero-stat-pill">
+                        <i class="fa-solid fa-heart-pulse" style="color: #34D399;"></i>
+                        Weather Safety Score: <strong style="color: #fff; margin-left: 4px;">${w.weather_health_score}/100</strong>
+                    </div>
+                    <div class="weather-hero-stat-pill">
+                        <i class="fa-solid fa-triangle-exclamation" style="color: ${totalAlerts > 0 ? '#F87171' : '#34D399'};"></i>
+                        Status: <strong style="color: #fff; margin-left: 4px;">${totalAlerts > 0 ? `${totalAlerts} Adverse Alert${totalAlerts > 1 ? 's' : ''}` : 'All Safe & Clear'}</strong>
+                    </div>
+                    <div class="weather-hero-stat-pill">
+                        <i class="fa-solid fa-sun" style="color: #FBBF24;"></i>
+                        Safe Activities: <strong style="color: #fff; margin-left: 4px;">${safeActs.length}/${evaluatedActs.length}</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="weather-hero-actions">
+                ${totalAlerts > 0 ? `
+                    <button class="btn btn-accent btn-glow" onclick="handleApplyAllWeatherSuggestions(${trip.id})" style="font-size: 0.95rem; padding: 0.75rem 1.4rem;">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> ✨ Apply All Recommendations
+                    </button>
+                    <span style="font-size: 0.78rem; color: #CBD5E1;">Optimizes all ${totalAlerts} affected outdoor activities</span>
+                ` : `
+                    <div style="background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); padding: 0.6rem 1.2rem; border-radius: var(--radius-lg); font-size: 0.88rem; font-weight: 600; color: #A7F3D0;">
+                        <i class="fa-solid fa-circle-check"></i> Perfect Weather Alignment
+                    </div>
+                `}
+            </div>
+        </div>
+
+        <!-- Multi-City Weather Forecast Carousel / Grid -->
+        <div class="weather-forecast-section">
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title"><i class="fa-solid fa-cloud-sun" style="color: var(--primary);"></i> Multi-City Daily Forecasts</h2>
+                    <p style="font-size: 0.85rem; color: var(--text-muted);">Destination weather forecast across your trip dates.</p>
+                </div>
+            </div>
+    `;
+
+    const cityForecasts = w.city_forecasts || {};
+    for (const cid in cityForecasts) {
+        const cfc = cityForecasts[cid];
+        const days = cfc.days || [];
+
+        html += `
+            <div style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-xl); padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: var(--shadow-sm);">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 0.6rem;">
+                        <i class="fa-solid fa-location-dot" style="color: var(--accent); font-size: 1.15rem;"></i>
+                        <span style="font-family: var(--font-heading); font-size: 1.2rem; font-weight: 700;">${escapeHtml(cfc.city_name || 'Destination')}</span>
+                    </div>
+                    <span style="font-size: 0.8rem; color: var(--text-muted);"><i class="fa-solid fa-satellite-dish"></i> Live Global Meteorological API</span>
+                </div>
+
+                <div class="forecast-cards-grid">
+        `;
+
+        days.forEach(d => {
+            const hasRain = d.precipitation_mm > 1.5 || d.weather_type === 'rain' || d.weather_type === 'thunderstorm';
+            const isHeat = d.temp_max >= 38.0;
+
+            html += `
+                <div class="forecast-day-card ${hasRain || isHeat ? 'has-alert' : ''}">
+                    <div class="forecast-day-badge">${escapeHtml(d.day_name)}</div>
+                    <div class="forecast-date-str">${formatDate(d.date)}</div>
+                    <div class="forecast-weather-icon ${d.weather_type}">
+                        <i class="fa-solid ${d.icon}"></i>
+                    </div>
+                    <div class="forecast-cond-label">${escapeHtml(d.condition)}</div>
+                    <div class="forecast-temp-range">
+                        ${d.temp_max}° <span class="min-temp">/ ${d.temp_min}°C</span>
+                    </div>
+                    <div class="forecast-sub-meta">
+                        <span><i class="fa-solid fa-droplet" style="color: #3B82F6;"></i> ${d.precipitation_mm}mm</span>
+                        <span><i class="fa-solid fa-wind" style="color: #64748B;"></i> ${d.wind_speed_kmh}km/h</span>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+            </div>
+        `;
+    }
+
+    html += `
+        </div>
+
+        <!-- Weather Alerts & Smart Optimization Actions -->
+        <div class="section-header">
+            <div>
+                <h2 class="section-title"><i class="fa-solid fa-wand-magic-sparkles" style="color: var(--primary);"></i> Smart Itinerary Adjustments</h2>
+                <p style="font-size: 0.85rem; color: var(--text-muted);">Weather-sensitive activities evaluated against forecasted conditions, with actionable alternatives.</p>
+            </div>
+        </div>
+
+        <div class="weather-optimizations-grid">
+    `;
+
+    if (totalAlerts === 0) {
+        html += `
+            <div style="background: var(--bg-surface); border: 1.5px solid #A7F3D0; border-radius: var(--radius-xl); padding: 2.5rem; text-align: center;">
+                <i class="fa-solid fa-circle-check" style="font-size: 2.5rem; color: var(--success); margin-bottom: 0.75rem;"></i>
+                <h3 style="font-size: 1.25rem; font-weight: 700; color: #065F46;">No Weather Adjustments Needed!</h3>
+                <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 500px; margin: 0.5rem auto 0 auto;">
+                    All scheduled outdoor activities are aligned with optimal, clear weather conditions. Your itinerary is ready for an exceptional journey!
+                </p>
+            </div>
+        `;
+    } else {
+        // Render Affected Activities First
+        [...highRiskActs, ...modRiskActs].forEach(act => {
+            const risk = act.risk_analysis || {};
+            const suggestions = act.suggestions || [];
+            const isHigh = risk.risk_level === 'high';
+
+            html += `
+                <div class="weather-opt-card ${isHigh ? 'high-priority' : 'moderate-priority'}">
+                    <div class="weather-opt-row">
+                        <!-- Left: Current Activity & Weather Threat -->
+                        <div class="weather-side-block">
+                            <div class="weather-side-label" style="color: ${isHigh ? '#DC2626' : '#D97706'};">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                                Scheduled Plan (${escapeHtml(risk.alert_title || '')})
+                            </div>
+                            <div class="weather-side-title">${escapeHtml(act.name)}</div>
+                            <div style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+                                <i class="fa-regular fa-calendar"></i> Day ${act.day_number} (${formatDate(act.day_date)}) at ${act.scheduled_time || '10:00'}
+                                &bull; <i class="fa-solid fa-location-dot"></i> ${escapeHtml(act.city_name || '')}
+                            </div>
+                            <div class="weather-side-desc">
+                                ${escapeHtml(risk.alert_description || '')}
+                            </div>
+                        </div>
+
+                        <!-- Center Transition Arrow -->
+                        <div class="weather-arrow-center">
+                            <i class="fa-solid fa-arrow-right"></i>
+                            <span style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted); margin-top: 0.25rem;">Recommendation</span>
+                        </div>
+
+                        <!-- Right: Suggested Adjustment -->
+                        <div class="weather-side-block" style="background: #F0FDF4; border-color: #BBF7D0;">
+                            <div class="weather-side-label" style="color: #16A34A;">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                ${suggestions.length > 0 ? escapeHtml(suggestions[0].badge) : 'Recommended Action'}
+                            </div>
+                            <div class="weather-side-title" style="color: #15803D;">
+                                ${suggestions.length > 0 ? escapeHtml(suggestions[0].title) : 'Reschedule or Shift Time'}
+                            </div>
+                            <div class="weather-side-desc" style="color: #166534;">
+                                ${suggestions.length > 0 ? escapeHtml(suggestions[0].description) : 'Consider moving this activity to a sunny slot.'}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Footer Actions -->
+                    <div class="weather-opt-footer">
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <span class="category-tag ${act.category}">${escapeHtml(act.category)}</span>
+                            <span style="font-size: 0.82rem; color: var(--text-muted);"><i class="fa-regular fa-clock"></i> ${act.duration_hours}h</span>
+                            <span style="font-size: 0.82rem; font-weight: 700; color: var(--text-main);">${formatCurrency(act.estimated_cost, trip.currency)}</span>
+                        </div>
+                        <div style="display: flex; gap: 0.6rem;">
+                            ${suggestions.length > 0 ? `
+                                <button class="btn-weather-apply" onclick="handleApplyWeatherSuggestion(${trip.id}, ${act.id}, '${suggestions[0].type}', ${escapeHtml(JSON.stringify(suggestions[0]))})">
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i> ${escapeHtml(suggestions[0].action_label || 'Apply Suggestion')}
+                                </button>
+                            ` : ''}
+                            <button class="btn-weather-dismiss" onclick="handleDismissWeatherAlert(${act.id})">
+                                <i class="fa-solid fa-check"></i> Keep Original Plan
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    // Render Unaffected / Safe Activities List
+    if (safeActs.length > 0) {
+        html += `
+            <div style="margin-top: 1.5rem;">
+                <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.75rem;">
+                    <i class="fa-solid fa-shield-check" style="color: var(--success);"></i> Unaffected &amp; Weather-Safe Activities (${safeActs.length})
+                </h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.85rem;">
+        `;
+
+        safeActs.forEach(act => {
+            const risk = act.risk_analysis || {};
+            html += `
+                <div style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; box-shadow: var(--shadow-sm);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.35rem;">
+                        <span style="font-weight: 700; font-size: 0.92rem;">${escapeHtml(act.name)}</span>
+                        <span class="badge-chip success" style="font-size: 0.68rem; padding: 2px 6px;">Safe</span>
+                    </div>
+                    <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.4rem;">
+                        Day ${act.day_number} &bull; ${escapeHtml(act.city_name || '')} &bull; ${escapeHtml(act.category || '')}
+                    </div>
+                    <div style="font-size: 0.8rem; color: #059669;">
+                        <i class="fa-solid ${risk.weather_icon || 'fa-sun'}"></i> ${escapeHtml(risk.alert_description || 'Ideal weather conditions forecasted.')}
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+            </div>
+        `;
+    }
+
+    html += `
+        </div>
+
+        <!-- Interactive Destination Weather Explorer -->
+        <div class="weather-explorer-box">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                    <h3 style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 700; margin-bottom: 0.25rem;">
+                        <i class="fa-solid fa-magnifying-glass-location" style="color: var(--primary);"></i> Interactive Destination Weather Explorer
+                    </h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted);">
+                        Check live meteorological forecasts and outdoor suitability for any global destination before adding activities.
+                    </p>
+                </div>
+            </div>
+
+            <div class="weather-explorer-form">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Destination City</label>
+                    <select class="form-select" id="explorer-city-select">
+                        <option value="1">Delhi, India</option>
+                        <option value="2">Jaipur, India</option>
+                        <option value="3">Udaipur, India</option>
+                        <option value="4">Agra, India</option>
+                        <option value="5">Varanasi, India</option>
+                        <option value="6">Goa, India</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Travel Start Date</label>
+                    <input type="date" class="form-input" id="explorer-start-date" value="${trip.start_date}">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Travel End Date</label>
+                    <input type="date" class="form-input" id="explorer-end-date" value="${trip.end_date}">
+                </div>
+                <button class="btn btn-primary" onclick="handleExploreDestinationWeather()" style="height: 42px;">
+                    <i class="fa-solid fa-cloud-arrow-down"></i> Check Live Forecast
+                </button>
+            </div>
+
+            <div id="explorer-weather-results" style="margin-top: 1.5rem;">
+                <!-- Populated on explorer query -->
+            </div>
+        </div>
+    `;
+
+    return html;
+}
+
+// ================= Weather Event Handlers =================
+async function handleApplyWeatherSuggestion(tripId, activityId, actionType, suggestion) {
+    if (typeof suggestion === 'string') {
+        try { suggestion = JSON.parse(suggestion); } catch(e) {}
+    }
+
+    const payload = {
+        activity_id: activityId,
+        action_type: actionType
+    };
+
+    if (actionType === 'move_day') {
+        payload.target_day_number = suggestion.target_day_number;
+    } else if (actionType === 'swap_indoor') {
+        payload.substitute_activity = suggestion.substitute_activity;
+    }
+
+    const res = await apiRequest(`/api/v1/trips/${tripId}/weather-adjust`, 'POST', payload);
+    if (res.success) {
+        showToast(res.message || 'Weather adjustment applied successfully!', 'success');
+        renderItineraryBuilder();
+    } else {
+        showToast(res.error || 'Failed to apply adjustment', 'error');
+    }
+}
+
+function handleDismissWeatherAlert(activityId) {
+    if (!state.weatherAlertDismissed) state.weatherAlertDismissed = {};
+    state.weatherAlertDismissed[activityId] = true;
+    showToast('Alert dismissed. Original plan kept.', 'info');
+    const el = document.getElementById(`weather-alert-${activityId}`);
+    if (el) {
+        el.style.transition = 'all 0.3s ease';
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(-10px)';
+        setTimeout(() => {
+            renderItineraryBuilder();
+        }, 300);
+    } else {
+        renderItineraryBuilder();
+    }
+}
+
+async function handleApplyAllWeatherSuggestions(tripId) {
+    const res = await apiRequest(`/api/v1/trips/${tripId}/weather-adjust-all`, 'POST');
+    if (res.success) {
+        showToast(res.message || 'All weather recommendations applied!', 'success');
+        renderItineraryBuilder();
+    } else {
+        showToast(res.error || 'Failed to apply adjustments', 'error');
+    }
+}
+
+async function handleExploreDestinationWeather() {
+    const cityId = document.getElementById('explorer-city-select').value;
+    const startDate = document.getElementById('explorer-start-date').value;
+    const endDate = document.getElementById('explorer-end-date').value;
+    const resultsContainer = document.getElementById('explorer-weather-results');
+
+    if (!startDate || !endDate) {
+        showToast('Please select start and end dates.', 'warning');
+        return;
+    }
+
+    resultsContainer.innerHTML = `<div style="text-align: center; padding: 1.5rem; color: var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Fetching live destination forecast...</div>`;
+
+    const res = await apiRequest(`/api/v1/weather?city_id=${cityId}&start_date=${startDate}&end_date=${endDate}`);
+    if (res.success && res.forecast) {
+        const fc = res.forecast;
+        const days = fc.days || [];
+
+        let h = `
+            <div style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <span style="font-weight: 700; font-size: 1rem;"><i class="fa-solid fa-cloud-sun"></i> Forecast for ${escapeHtml(fc.city_name || 'Selected City')}</span>
+                    <span style="font-size: 0.8rem; color: var(--text-muted);">${formatDateRange(startDate, endDate)}</span>
+                </div>
+                <div class="forecast-cards-grid">
+        `;
+
+        days.forEach(d => {
+            h += `
+                <div class="forecast-day-card">
+                    <div class="forecast-day-badge">${escapeHtml(d.day_name)}</div>
+                    <div class="forecast-date-str">${formatDate(d.date)}</div>
+                    <div class="forecast-weather-icon ${d.weather_type}">
+                        <i class="fa-solid ${d.icon}"></i>
+                    </div>
+                    <div class="forecast-cond-label">${escapeHtml(d.condition)}</div>
+                    <div class="forecast-temp-range">
+                        ${d.temp_max}° <span class="min-temp">/ ${d.temp_min}°C</span>
+                    </div>
+                    <div class="forecast-sub-meta">
+                        <span><i class="fa-solid fa-droplet" style="color: #3B82F6;"></i> ${d.precipitation_mm}mm</span>
+                        <span><i class="fa-solid fa-wind" style="color: #64748B;"></i> ${d.wind_speed_kmh}km/h</span>
+                    </div>
+                </div>
+            `;
+        });
+
+        h += `
+                </div>
+            </div>
+        `;
+        resultsContainer.innerHTML = h;
+    } else {
+        resultsContainer.innerHTML = `<div style="text-align: center; color: var(--danger);">Failed to retrieve weather data.</div>`;
+    }
+}
