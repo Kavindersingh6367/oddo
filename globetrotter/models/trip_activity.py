@@ -28,8 +28,18 @@ class GlobetrotterTripActivity(models.Model):
     scheduled_date = fields.Date(string='Scheduled Date')
     scheduled_time = fields.Char(string='Time Slot', default='10:00')
     duration_hours = fields.Float(string='Duration (Hours)', default=2.0)
-    estimated_cost = fields.Float(string='Estimated Cost', default=0.0)
+    section_type = fields.Selection([
+        ('activity', 'Activity / Sightseeing'),
+        ('transport', 'Travel / Transport'),
+        ('hotel', 'Hotel / Check-in'),
+        ('food', 'Food / Dining'),
+        ('event', 'Event / Show'),
+        ('free_time', 'Free Time / Relaxation'),
+        ('custom', 'Custom Section'),
+    ], string='Section Type', default='activity')
+    
     sequence = fields.Integer(string='Display Order', default=10)
+    location_address = fields.Char(string='Location / Address')
     notes = fields.Text(string='Activity Notes')
     image = fields.Char(string='Photo URL')
 

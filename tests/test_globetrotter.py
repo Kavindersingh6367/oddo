@@ -545,6 +545,239 @@ class TestGlobeTrotter(unittest.TestCase):
         self.assertEqual(len(cloned_view['hotels']), 3)
         self.assertEqual(cloned_view['cost_accommodation'], total_accommodation_cost)
 
+    def test_08_travel_dna_engine(self):
+        """Verify Travel DNA calculation, multi-dimensional affinities, persona title, and insights."""
+        # Login demo user
+        login_res = requests.post(f"{BASE_URL}/api/v1/auth/demo-login", json={"role": "traveler"}).json()
+        token = login_res['token']
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Auth me returns travel DNA
+        me_res = requests.get(f"{BASE_URL}/api/v1/auth/me", headers=headers)
+        self.assertEqual(me_res.status_code, 200)
+        user_data = me_res.json().get('user', {})
+        dna = user_data.get('travel_dna', {})
+        self.assertTrue(dna)
+        self.assertIn('adventure', dna)
+        self.assertIn('culture', dna)
+        self.assertIn('food', dna)
+        self.assertIn('relaxation', dna)
+        self.assertIn('sightseeing', dna)
+        self.assertIn('persona_title', dna)
+        self.assertIn('budget_preference', dna)
+        self.assertGreaterEqual(len(dna.get('insights', [])), 1)
+
+        # Direct Travel DNA endpoint
+        dna_res = requests.get(f"{BASE_URL}/api/v1/user/travel-dna", headers=headers)
+        self.assertEqual(dna_res.status_code, 200)
+        self.assertEqual(dna_res.json()['travel_dna']['persona_title'], dna['persona_title'])
+
+    def test_09_trip_health_and_diagnostics(self):
+        """Verify 0-100 Trip Health scoring, penalty deductions, and actionable diagnostic recommendations."""
+        login_res = requests.post(f"{BASE_URL}/api/v1/auth/demo-login", json={"role": "traveler"}).json()
+        token = login_res['token']
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 1. Create a trip with severe budget and activity overload
+        trip_res = requests.post(f"{BASE_URL}/api/v1/trips", headers=headers, json={
+            "name": "Overloaded Stress Test Trip",
+            "start_date": "2026-12-01",
+            "end_date": "2026-12-03",
+            "total_budget": 5000.0,
+            "travelers_count": 1
+        }).json()
+        trip_id = trip_res['trip_id']
+
+        # Add Delhi Stop
+        d_res = requests.get(f"{BASE_URL}/api/v1/destinations").json()
+        delhi_id = next(c['id'] for c in d_res['destinations'] if c['name'] == 'Delhi')
+        stop_id = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/stops", headers=headers, json={
+            "city_id": delhi_id, "arrival_date": "2026-12-01", "departure_date": "2026-12-03"
+        }).json()['stop_id']
+
+        # Add 5 activities on Day 1 (Congestion)
+        for i in range(1, 6):
+            requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/activities", headers=headers, json={
+                "stop_id": stop_id,
+                "name": f"Heavy Activity {i}",
+                "day_number": 1,
+                "duration_hours": 2.5,
+                "estimated_cost": 2000.0
+            })
+
+        # Fetch trip and verify health diagnostics
+        trip_view = requests.get(f"{BASE_URL}/api/v1/trips/{trip_id}", headers=headers).json()['trip']
+        self.assertIn('trip_health', trip_view)
+        health = trip_view['trip_health']
+        self.assertLessEqual(health['health_score'], 80) # Penalized for budget overrun & day 1 overload
+        self.assertIn('budget_health', health['breakdown'])
+        self.assertIn('activity_load', health['breakdown'])
+        self.assertGreaterEqual(len(health['actionable_recommendations']), 1)
+
+    def test_10_smart_itinerary_balancing_and_day_moves(self):
+        """Verify schedule congestion detection, smart balancing suggestions, and 1-click execution."""
+        login_res = requests.post(f"{BASE_URL}/api/v1/auth/demo-login", json={"role": "traveler"}).json()
+        token = login_res['token']
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Create 4-day trip
+        trip_res = requests.post(f"{BASE_URL}/api/v1/trips", headers=headers, json={
+            "name": "Balancing Test Tour",
+            "start_date": "2026-12-10",
+            "end_date": "2026-12-14",
+            "total_budget": 50000.0,
+            "travelers_count": 2
+        }).json()
+        trip_id = trip_res['trip_id']
+
+        d_res = requests.get(f"{BASE_URL}/api/v1/destinations").json()
+        jaipur_id = next(c['id'] for c in d_res['destinations'] if c['name'] == 'Jaipur')
+        stop_id = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/stops", headers=headers, json={
+            "city_id": jaipur_id, "arrival_date": "2026-12-10", "departure_date": "2026-12-14"
+        }).json()['stop_id']
+
+        # Add 4 activities on Day 1
+        act_ids = []
+        for i in range(1, 5):
+            res = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/activities", headers=headers, json={
+                "stop_id": stop_id,
+                "name": f"Jaipur Sight {i}",
+                "day_number": 1,
+                "duration_hours": 2.0,
+                "estimated_cost": 500.0
+            }).json()
+            act_ids.append(res['activity_id'])
+
+        # Check suggestions
+        trip_view = requests.get(f"{BASE_URL}/api/v1/trips/{trip_id}", headers=headers).json()['trip']
+        suggestions = trip_view.get('balancing_suggestions', [])
+        self.assertGreaterEqual(len(suggestions), 1)
+        sug = suggestions[0]
+        self.assertEqual(sug['from_day'], 1)
+
+        # Accept suggestion by moving activity to suggested day
+        move_res = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/activities/{sug['activity_id']}/move-day", headers=headers, json={
+            "day_number": sug['to_day']
+        })
+        self.assertEqual(move_res.status_code, 200)
+
+        # Duplicate activity to Day 3
+        dup_act_res = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/activities/{act_ids[0]}/duplicate", headers=headers, json={
+            "target_day": 3
+        })
+        self.assertEqual(dup_act_res.status_code, 200)
+        self.assertTrue(dup_act_res.json().get('success'))
+
+    def test_11_community_posts_interactions_and_1click_import(self):
+        """Verify community posts retrieval, filter, like/save toggle, and 1-Click Import into trip."""
+        ts = int(time.time() * 1000)
+        login_res = requests.post(f"{BASE_URL}/api/v1/auth/signup", json={
+            "name": "Community Fan",
+            "email": f"community_{ts}@globetrotter.travel",
+            "password": "password123"
+        }).json()
+        token = login_res['token']
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 1. Fetch community posts
+        posts_res = requests.get(f"{BASE_URL}/api/v1/community/posts", headers=headers)
+        self.assertEqual(posts_res.status_code, 200)
+        posts = posts_res.json().get('posts', [])
+        self.assertGreaterEqual(len(posts), 1)
+
+        target_post = posts[0]
+        post_id = target_post['id']
+
+        # 2. Like interaction
+        initial_likes = target_post.get('likes_count', 0)
+        like_res = requests.post(f"{BASE_URL}/api/v1/community/posts/{post_id}/interact", headers=headers, json={"type": "like"})
+        self.assertEqual(like_res.status_code, 200)
+        self.assertTrue(like_res.json()['active'])
+        self.assertEqual(like_res.json()['likes_count'], initial_likes + 1)
+
+        # 3. 1-Click Import into a new trip
+        trip_res = requests.post(f"{BASE_URL}/api/v1/trips", headers=headers, json={
+            "name": "Community Imported Vacation",
+            "start_date": "2026-11-20",
+            "end_date": "2026-11-25",
+            "total_budget": 50000.0,
+            "travelers_count": 2
+        }).json()
+        dest_trip_id = trip_res['trip_id']
+
+        # Add a stop
+        d_res = requests.get(f"{BASE_URL}/api/v1/destinations").json()
+        jaipur_id = next(c['id'] for c in d_res['destinations'] if c['name'] == 'Jaipur')
+        dest_stop_id = requests.post(f"{BASE_URL}/api/v1/trips/{dest_trip_id}/stops", headers=headers, json={
+            "city_id": jaipur_id, "arrival_date": "2026-11-20", "departure_date": "2026-11-25"
+        }).json()['stop_id']
+
+        # Import activities
+        import_payload = {
+            "trip_id": dest_trip_id,
+            "stop_id": dest_stop_id,
+            "day_number": 2,
+            "activities": [
+                {"name": "Sunrise at Jal Mahal", "category": "nature", "estimated_cost": 300.0, "duration_hours": 1.5, "time": "06:00"},
+                {"name": "LMB Ghewar Tasting", "category": "food", "estimated_cost": 450.0, "duration_hours": 1.0, "time": "16:00"}
+            ]
+        }
+        import_res = requests.post(f"{BASE_URL}/api/v1/community/posts/{post_id}/import", headers=headers, json=import_payload)
+        self.assertEqual(import_res.status_code, 200)
+        import_data = import_res.json()
+        self.assertEqual(import_data['imported_count'], 2)
+        self.assertEqual(import_data['imported_cost'], 750.0)
+
+        # Verify imported activities and expenses in the trip
+        dest_view = requests.get(f"{BASE_URL}/api/v1/trips/{dest_trip_id}", headers=headers).json()['trip']
+        self.assertEqual(len(dest_view['activities']), 2)
+        self.assertEqual(dest_view['cost_activities'], 750.0)
+
+    def test_12_universal_global_search(self):
+        """Verify universal instant search across Destinations, Activities, Hotels, Trips, and Community."""
+        res = requests.get(f"{BASE_URL}/api/v1/search?q=Jaipur")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data.get('success'))
+        results = data.get('results', {})
+        self.assertIn('destinations', results)
+        self.assertIn('activities', results)
+        self.assertIn('hotels', results)
+        self.assertIn('trips', results)
+        self.assertIn('community', results)
+        self.assertGreaterEqual(len(results['destinations']), 1)
+        self.assertGreaterEqual(len(results['hotels']), 1)
+
+    def test_13_admin_analytics_and_user_management(self):
+        """Verify role-based security on Admin Analytics and PostgreSQL aggregation metrics."""
+        # 1. Traveler account should be forbidden (403)
+        traveler_login = requests.post(f"{BASE_URL}/api/v1/auth/demo-login", json={"role": "traveler"}).json()
+        traveler_headers = {"Authorization": f"Bearer {traveler_login['token']}"}
+
+        admin_res_denied = requests.get(f"{BASE_URL}/api/v1/admin/analytics", headers=traveler_headers)
+        self.assertEqual(admin_res_denied.status_code, 403)
+
+        # 2. Admin account should succeed (200)
+        admin_login = requests.post(f"{BASE_URL}/api/v1/auth/demo-login", json={"role": "admin"}).json()
+        admin_headers = {"Authorization": f"Bearer {admin_login['token']}"}
+
+        admin_res = requests.get(f"{BASE_URL}/api/v1/admin/analytics", headers=admin_headers)
+        self.assertEqual(admin_res.status_code, 200)
+        analytics = admin_res.json().get('analytics', {})
+        self.assertIn('total_users', analytics)
+        self.assertIn('total_trips', analytics)
+        self.assertIn('top_cities', analytics)
+        self.assertIn('top_activities', analytics)
+        self.assertIn('hotel_tiers', analytics)
+        self.assertIn('community', analytics)
+
+        # 3. Admin user management list
+        users_res = requests.get(f"{BASE_URL}/api/v1/admin/users", headers=admin_headers)
+        self.assertEqual(users_res.status_code, 200)
+        users = users_res.json().get('users', [])
+        self.assertGreaterEqual(len(users), 2)
+
 if __name__ == '__main__':
     unittest.main()
+
 

@@ -9,4 +9,7 @@ from . import trip_hotel
 from . import expense
 from . import shared_trip
 from . import saved_destination
+from . import community_post
+from . import community_interaction
 from . import res_users
+

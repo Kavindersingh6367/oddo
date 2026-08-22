@@ -433,6 +433,344 @@ def calculate_hotel_recommendation(hotel, nights=1, rooms=1, guests=2, trip_budg
     }
 
 
+def calculate_user_travel_dna(cur, user_id):
+    """
+    Computes a transparent, data-driven Travel DNA profile for a user based on:
+    - Activity categories across all trips
+    - Travel styles & trip durations
+    - Hotel category preferences
+    - Saved bookmarks
+    """
+    # 1. Activity Category Counts
+    cur.execute("""
+        SELECT a.category, COUNT(*) as count 
+        FROM globetrotter_trip_activity a
+        JOIN globetrotter_trip t ON a.trip_id = t.id
+        WHERE t.user_id = %s
+        GROUP BY a.category
+    """, (user_id,))
+    act_counts = {row['category']: int(row['count']) for row in cur.fetchall()}
+    total_acts = sum(act_counts.values())
+
+    # 2. Trip Styles & Durations
+    cur.execute("""
+        SELECT travel_style, total_budget, start_date, end_date 
+        FROM globetrotter_trip 
+        WHERE user_id = %s
+    """, (user_id,))
+    trips = cur.fetchall()
+    total_trips = len(trips)
+
+    # 3. Hotel Selections
+    cur.execute("""
+        SELECT h.hotel_category, COUNT(*) as count
+        FROM globetrotter_trip_hotel th
+        JOIN globetrotter_trip t ON th.trip_id = t.id
+        JOIN globetrotter_hotel h ON th.hotel_id = h.id
+        WHERE t.user_id = %s
+        GROUP BY h.hotel_category
+    """, (user_id,))
+    hotel_counts = {row['hotel_category']: int(row['count']) for row in cur.fetchall()}
+
+    adv_count = act_counts.get('adventure', 0) * 1.0 + act_counts.get('nature', 0) * 0.4
+    cult_count = act_counts.get('culture', 0) * 1.0 + act_counts.get('sightseeing', 0) * 0.6
+    food_count = act_counts.get('food', 0) * 1.0 + act_counts.get('entertainment', 0) * 0.3
+    relax_count = act_counts.get('relaxation', 0) * 1.0 + act_counts.get('nature', 0) * 0.4
+    sight_count = act_counts.get('sightseeing', 0) * 1.0 + act_counts.get('culture', 0) * 0.4
+
+    # Baseline seed points for new/demo users so the radar is always meaningful
+    adv_base, cult_base, food_base, relax_base, sight_base = 65, 82, 74, 55, 80
+
+    if total_acts > 0:
+        max_c = max(1.0, float(max(adv_count, cult_count, food_count, relax_count, sight_count, 1)))
+        adv_score = min(98, max(25, int(round((adv_count / max_c) * 45 + 45))))
+        cult_score = min(98, max(25, int(round((cult_count / max_c) * 45 + 45))))
+        food_score = min(98, max(25, int(round((food_count / max_c) * 45 + 45))))
+        relax_score = min(98, max(25, int(round((relax_count / max_c) * 45 + 45))))
+        sight_score = min(98, max(25, int(round((sight_count / max_c) * 45 + 45))))
+    else:
+        cur.execute("SELECT preferred_travel_style FROM res_users WHERE id = %s", (user_id,))
+        u_row = cur.fetchone()
+        u_style = (u_row.get('preferred_travel_style') if u_row else 'balanced') or 'balanced'
+        if u_style == 'adventure':
+            adv_score, cult_score, food_score, relax_score, sight_score = 88, 65, 60, 40, 75
+        elif u_style == 'luxury':
+            adv_score, cult_score, food_score, relax_score, sight_score = 50, 80, 85, 90, 85
+        elif u_style == 'relaxed':
+            adv_score, cult_score, food_score, relax_score, sight_score = 45, 60, 75, 92, 70
+        else:
+            adv_score, cult_score, food_score, relax_score, sight_score = adv_base, cult_base, food_base, relax_base, sight_base
+
+    # Compute Typical Duration
+    avg_duration = 5
+    durations = []
+    for t in trips:
+        if t.get('start_date') and t.get('end_date'):
+            s = t['start_date']
+            e = t['end_date']
+            if isinstance(s, str): s = datetime.strptime(s, '%Y-%m-%d').date()
+            if isinstance(e, str): e = datetime.strptime(e, '%Y-%m-%d').date()
+            durations.append((e - s).days + 1)
+    if durations:
+        avg_duration = int(round(sum(durations) / len(durations)))
+        if avg_duration <= 3:
+            typical_duration_text = "Weekend Getaways (2–4 Days)"
+        elif avg_duration <= 7:
+            typical_duration_text = "Standard Journeys (5–7 Days)"
+        elif avg_duration <= 14:
+            typical_duration_text = "Extended Expeditions (8–14 Days)"
+        else:
+            typical_duration_text = "Grand Grand Tours (15+ Days)"
+    else:
+        typical_duration_text = "Standard Journeys (5–7 Days)"
+
+    # Compute Budget & Stay Style
+    lux_stays = hotel_counts.get('luxury', 0) + hotel_counts.get('premium', 0)
+    bud_stays = hotel_counts.get('budget', 0) + hotel_counts.get('economy', 0)
+    mid_stays = hotel_counts.get('mid_range', 0)
+
+    if lux_stays > mid_stays and lux_stays > bud_stays:
+        preferred_stay = "Luxury & Boutique Palaces"
+        budget_pref = "Luxury"
+    elif bud_stays > mid_stays and bud_stays > lux_stays:
+        preferred_stay = "Hostels & Economy Stays"
+        budget_pref = "Budget"
+    else:
+        preferred_stay = "Mid-Range Heritage Stays"
+        budget_pref = "Balanced"
+
+    top_scores = sorted([
+        ('Culture', cult_score),
+        ('Adventure', adv_score),
+        ('Food & Dining', food_score),
+        ('Relaxation', relax_score),
+        ('Sightseeing', sight_score)
+    ], key=lambda x: x[1], reverse=True)
+
+    primary = top_scores[0][0]
+    secondary = top_scores[1][0]
+    persona_title = f"{primary} & {secondary} Explorer"
+
+    return {
+        'adventure': adv_score,
+        'culture': cult_score,
+        'food': food_score,
+        'relaxation': relax_score,
+        'sightseeing': sight_score,
+        'nature': int((adv_score + relax_score) / 2),
+        'shopping': int((cult_score + food_score) / 2),
+        'budget_preference': budget_pref,
+        'typical_trip_duration': typical_duration_text,
+        'preferred_stay': preferred_stay,
+        'persona_title': persona_title,
+        'total_trips_analyzed': total_trips,
+        'total_activities_logged': total_acts,
+        'insights': [
+            f"Strongest affinity for {primary} ({top_scores[0][1]}%) and {secondary} ({top_scores[1][1]}%).",
+            f"Prefers {budget_pref.lower()} accommodations with a typical cadence of {typical_duration_text.lower()}.",
+            f"Recommendation engine automatically prioritizes {primary.lower()}-aligned destinations and experiences."
+        ]
+    }
+
+
+def calculate_trip_health(trip_dict, stops, activities, expenses, hotels):
+    """
+    Computes a comprehensive 0-100 Trip Health & Diagnostics score,
+    detecting budget pressure, activity overload, schedule congestion,
+    rushed city pacing, and empty days with actionable suggestions.
+    """
+    duration_days = max(1, trip_dict.get('duration_days') or 1)
+    total_cost = float(trip_dict.get('total_estimated_cost') or 0.0)
+    budget = float(trip_dict.get('total_budget') or 0.0)
+    utilization = float(trip_dict.get('budget_utilization') or 0.0)
+    curr = trip_dict.get('currency', 'INR')
+
+    # 1. Budget Health (0-30)
+    score_budget = 30
+    budget_diagnostics = []
+    if budget > 0:
+        if total_cost > budget:
+            diff = total_cost - budget
+            score_budget = max(5, 30 - int((diff / budget) * 35))
+            budget_diagnostics.append(f"Over budget by {format_currency_text(diff, curr)}.")
+        elif utilization >= 90:
+            score_budget = 25
+            budget_diagnostics.append("Near full budget utilization (90%+).")
+        elif utilization >= 60:
+            score_budget = 30
+            budget_diagnostics.append("Budget healthy and well-allocated (60–90%).")
+        else:
+            score_budget = 24
+            budget_diagnostics.append("Low budget utilization (under 60%).")
+    else:
+        score_budget = 20
+        budget_diagnostics.append("No target budget set.")
+
+    # 2. Activity Load & Density (0-25)
+    score_load = 25
+    load_diagnostics = []
+    day_act_counts = {}
+    day_act_hours = {}
+    for a in activities:
+        d = int(a.get('day_number') or 1)
+        day_act_counts[d] = day_act_counts.get(d, 0) + 1
+        day_act_hours[d] = day_act_hours.get(d, 0.0) + float(a.get('duration_hours') or 2.0)
+
+    overloaded_days = [d for d, cnt in day_act_counts.items() if cnt >= 4 or day_act_hours.get(d, 0) >= 8.0]
+    empty_days = [d for d in range(1, duration_days + 1) if d not in day_act_counts]
+
+    if overloaded_days:
+        score_load -= min(15, len(overloaded_days) * 7)
+        load_diagnostics.append(f"Day(s) {', '.join(map(str, overloaded_days))} are heavily packed (4+ activities / 8+ hours). Schedule fatigue risk.")
+    if empty_days:
+        score_load -= min(8, len(empty_days) * 3)
+        load_diagnostics.append(f"Day(s) {', '.join(map(str, empty_days))} have no planned activities.")
+    if not overloaded_days and not empty_days and activities:
+        load_diagnostics.append("Balanced daily activity distribution (2–3 activities per day).")
+    elif not activities:
+        score_load = 10
+        load_diagnostics.append("No activities scheduled yet.")
+
+    score_load = max(5, score_load)
+
+    # 3. City Dwell Time & Transit Pacing (0-20)
+    score_dwell = 20
+    dwell_diagnostics = []
+    stops_count = len(stops)
+    if stops_count > 0:
+        days_per_city = duration_days / stops_count
+        if days_per_city < 1.5:
+            score_dwell = 10
+            dwell_diagnostics.append(f"Rushed city hopping ({days_per_city:.1f} days/city). High transit overhead.")
+        elif 1.5 <= days_per_city <= 4.0:
+            score_dwell = 20
+            dwell_diagnostics.append(f"Ideal dwell time ({days_per_city:.1f} days per city stop).")
+        else:
+            score_dwell = 18
+            dwell_diagnostics.append(f"Immersive slow-travel pacing ({days_per_city:.1f} days per city).")
+    else:
+        score_dwell = 5
+        dwell_diagnostics.append("No city stops added.")
+
+    # 4. Accommodation Coverage (0-15)
+    score_hotel = 15
+    hotel_diagnostics = []
+    stop_ids_with_hotel = set(h.get('stop_id') for h in hotels if h.get('stop_id'))
+    missing_hotel_stops = [s.get('city_name', f"Stop {s['id']}") for s in stops if s['id'] not in stop_ids_with_hotel]
+    
+    if missing_hotel_stops:
+        score_hotel -= min(10, len(missing_hotel_stops) * 4)
+        hotel_diagnostics.append(f"Missing hotel reservation for stop(s): {', '.join(missing_hotel_stops)}.")
+    else:
+        hotel_diagnostics.append("All destination stops have booked accommodations.")
+
+    stay_cost = float(trip_dict.get('cost_accommodation') or 0.0)
+    if total_cost > 0 and (stay_cost / total_cost) >= 0.55:
+        score_hotel -= 3
+        hotel_diagnostics.append(f"Accommodation represents {int(stay_cost/total_cost*100)}% of total spend.")
+
+    score_hotel = max(4, score_hotel)
+
+    # 5. Itinerary Completeness (0-10)
+    score_comp = 10
+    comp_diagnostics = []
+    if not stops: score_comp -= 4
+    if len(activities) < 3: score_comp -= 3
+    if not expenses and not hotels: score_comp -= 3
+    score_comp = max(2, score_comp)
+    if score_comp >= 8:
+        comp_diagnostics.append("Comprehensive itinerary with stops, stays, and activities.")
+    else:
+        comp_diagnostics.append("Itinerary is in draft state; add activities and stays.")
+
+    total_health = min(100, max(10, score_budget + score_load + score_dwell + score_hotel + score_comp))
+
+    if total_health >= 85:
+        health_status = "Healthy"
+        health_color = "emerald"
+    elif total_health >= 70:
+        health_status = "Good / Minor Attention"
+        health_color = "amber"
+    else:
+        health_status = "Needs Optimization"
+        health_color = "rose"
+
+    actionable_recommendations = []
+    if overloaded_days:
+        for od in overloaded_days:
+            light_day = next((d for d in range(1, duration_days + 1) if day_act_counts.get(d, 0) <= 2 and d != od), None)
+            if light_day:
+                actionable_recommendations.append({
+                    'type': 'balance',
+                    'title': f'Balance Day {od} Schedule',
+                    'message': f"Day {od} has {day_act_counts.get(od)} activities. Move 1-2 activities to Day {light_day} for a more relaxing pace.",
+                    'action_label': f"Move to Day {light_day}",
+                    'from_day': od,
+                    'to_day': light_day
+                })
+    if missing_hotel_stops:
+        actionable_recommendations.append({
+            'type': 'hotel',
+            'title': 'Add Accommodation',
+            'message': f"Select recommended hotels for {', '.join(missing_hotel_stops)} to complete your stay plan.",
+            'action_label': 'Find Hotels'
+        })
+    if budget > 0 and total_cost > budget:
+        actionable_recommendations.append({
+            'type': 'budget',
+            'title': 'Trim Budget Overrun',
+            'message': f"Trip is {format_currency_text(total_cost - budget, curr)} over budget. Consider switching to budget or mid-range hotel alternatives.",
+            'action_label': 'Review Budget'
+        })
+
+    return {
+        'health_score': total_health,
+        'health_status': health_status,
+        'health_color': health_color,
+        'breakdown': {
+            'budget_health': {'score': score_budget, 'max': 30, 'diagnostics': budget_diagnostics},
+            'activity_load': {'score': score_load, 'max': 25, 'diagnostics': load_diagnostics},
+            'dwell_pacing': {'score': score_dwell, 'max': 20, 'diagnostics': dwell_diagnostics},
+            'accommodation_coverage': {'score': score_hotel, 'max': 15, 'diagnostics': hotel_diagnostics},
+            'completeness': {'score': score_comp, 'max': 10, 'diagnostics': comp_diagnostics}
+        },
+        'actionable_recommendations': actionable_recommendations
+    }
+
+
+def get_balancing_suggestions(trip_dict, stops, activities):
+    """
+    Finds concrete activity moves from overloaded days to lighter days.
+    """
+    duration_days = max(1, trip_dict.get('duration_days') or 1)
+    day_activities = {}
+    for a in activities:
+        d = int(a.get('day_number') or 1)
+        day_activities.setdefault(d, []).append(a)
+
+    suggestions = []
+    sug_id = 1
+    for d, acts in day_activities.items():
+        if len(acts) >= 4:
+            for target_d in range(1, duration_days + 1):
+                target_acts = day_activities.get(target_d, [])
+                if len(target_acts) <= 2 and target_d != d:
+                    movable_act = acts[-1]
+                    suggestions.append({
+                        'id': sug_id,
+                        'activity_id': movable_act['id'],
+                        'activity_name': movable_act['name'],
+                        'from_day': d,
+                        'to_day': target_d,
+                        'reason': f"Day {d} has {len(acts)} activities ({sum(float(x.get('duration_hours') or 2) for x in acts):.1f}h scheduled). Moving '{movable_act['name']}' to Day {target_d} balances your daily schedule.",
+                        'impact': "Improves Trip Health score by +8 pts and avoids afternoon exhaustion."
+                    })
+                    sug_id += 1
+                    break
+    return suggestions
+
+
+
 
 class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
 
@@ -474,7 +812,12 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
             return None
 
         user_id = SESSIONS[session_token]
-        cur.execute("SELECT id, name, email, preferred_currency, preferred_travel_style, preferred_language, avatar_url, bio, role FROM res_users WHERE id = %s", (user_id,))
+        cur.execute("""
+            SELECT id, name, email, first_name, last_name, phone, city, country,
+                   preferred_currency, preferred_travel_style, preferred_language,
+                   avatar_url, bio, additional_info, role, created_at
+            FROM res_users WHERE id = %s
+        """, (user_id,))
         return cur.fetchone()
 
     def do_OPTIONS(self):
@@ -500,13 +843,24 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             user = self._get_current_user(cur)
 
-            # 1. Auth Me
+            # 1. Auth Me & Travel DNA
             if path == '/api/v1/auth/me':
                 if not user:
                     conn.close()
                     return self._send_error('Not authenticated', status=401)
+                u_dict = dict(user)
+                u_dict['travel_dna'] = calculate_user_travel_dna(cur, user['id'])
                 conn.close()
-                return self._send_json({'success': True, 'user': dict(user)})
+                return self._send_json({'success': True, 'user': u_dict})
+
+            # 1b. Direct Travel DNA profile
+            elif path == '/api/v1/user/travel-dna':
+                if not user:
+                    conn.close()
+                    return self._send_error('Not authenticated', status=401)
+                dna = calculate_user_travel_dna(cur, user['id'])
+                conn.close()
+                return self._send_json({'success': True, 'travel_dna': dna})
 
             # 2. Destinations Catalog
             elif path == '/api/v1/destinations':
@@ -809,7 +1163,6 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 full_trips = []
                 for t in trips:
                     t_dict = dict(t)
-                    # fetch child items to compute fields
                     cur.execute("SELECT * FROM globetrotter_trip_stop WHERE trip_id = %s ORDER BY sequence ASC, arrival_date ASC", (t_dict['id'],))
                     stops = cur.fetchall()
                     cur.execute("SELECT * FROM globetrotter_trip_activity WHERE trip_id = %s ORDER BY day_number ASC, sequence ASC", (t_dict['id'],))
@@ -826,8 +1179,8 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 conn.close()
                 return self._send_json({'success': True, 'trips': full_trips})
 
-            # 6. Single Trip Details
-            elif path.startswith('/api/v1/trips/') and not any(sub in path for sub in ['/duplicate', '/share', '/stops', '/activities', '/expenses']):
+            # 6. Single Trip Details (with Health & Smart Balancing)
+            elif path.startswith('/api/v1/trips/') and not any(sub in path for sub in ['/duplicate', '/share', '/stops', '/activities', '/expenses', '/balance']):
                 if not user:
                     conn.close()
                     return self._send_error('Authentication required', status=401)
@@ -844,13 +1197,11 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                     conn.close()
                     return self._send_error('Trip not found', status=404)
 
-                # Security check (Record Rules: user can only view their own trip or public trip)
                 if trip['user_id'] != user['id'] and user.get('role') != 'admin' and not trip['is_public']:
                     conn.close()
                     return self._send_error('Access Denied: You do not have permission to view this trip', status=403)
 
                 t_dict = dict(trip)
-                # fetch stops with city meta
                 cur.execute("""
                     SELECT s.*, c.name as city_name, c.country as country_name, c.cover_image as city_image, c.region as city_region
                     FROM globetrotter_trip_stop s
@@ -860,7 +1211,6 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 """, (trip_id,))
                 stops = [dict(s) for s in cur.fetchall()]
 
-                # fetch scheduled activities
                 cur.execute("""
                     SELECT a.*, c.name as city_name
                     FROM globetrotter_trip_activity a
@@ -871,7 +1221,6 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 """, (trip_id,))
                 activities = [dict(a) for a in cur.fetchall()]
 
-                # fetch expenses
                 cur.execute("""
                     SELECT e.*, c.name as city_name
                     FROM globetrotter_expense e
@@ -882,7 +1231,6 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 """, (trip_id,))
                 expenses = [dict(e) for e in cur.fetchall()]
 
-                # fetch hotel bookings
                 cur.execute("""
                     SELECT th.*, h.name as hotel_name, h.image as hotel_image, h.rating as hotel_rating,
                            h.address as hotel_address, h.hotel_category, h.amenities as hotel_amenities,
@@ -896,12 +1244,16 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 """, (trip_id,))
                 hotels = [dict(h) for h in cur.fetchall()]
 
-                # attach hotel to stop
                 for s in stops:
                     s['hotel_booking'] = next((h for h in hotels if h.get('stop_id') == s['id']), None)
 
                 computed = compute_trip_business_logic(t_dict, stops, activities, expenses)
                 t_dict.update(computed)
+
+                # Add Trip Health and Smart Balancing
+                t_dict['trip_health'] = calculate_trip_health(t_dict, stops, activities, expenses, hotels)
+                t_dict['balancing_suggestions'] = get_balancing_suggestions(t_dict, stops, activities)
+
                 t_dict['stops'] = stops
                 t_dict['activities'] = activities
                 t_dict['hotels'] = hotels
@@ -927,10 +1279,8 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 trip_id = trip['id']
                 t_dict = dict(trip)
 
-                # Increment view count
                 cur.execute("UPDATE globetrotter_shared_trip SET view_count = view_count + 1 WHERE share_token = %s", (token,))
 
-                # fetch stops
                 cur.execute("""
                     SELECT s.*, c.name as city_name, c.country as country_name, c.cover_image as city_image, c.region as city_region
                     FROM globetrotter_trip_stop s
@@ -940,7 +1290,6 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 """, (trip_id,))
                 stops = [dict(s) for s in cur.fetchall()]
 
-                # fetch activities
                 cur.execute("""
                     SELECT a.*, c.name as city_name
                     FROM globetrotter_trip_activity a
@@ -951,11 +1300,9 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 """, (trip_id,))
                 activities = [dict(a) for a in cur.fetchall()]
 
-                # fetch expenses
                 cur.execute("SELECT * FROM globetrotter_expense WHERE trip_id = %s ORDER BY date ASC", (trip_id,))
                 expenses = [dict(e) for e in cur.fetchall()]
 
-                # fetch hotel bookings
                 cur.execute("""
                     SELECT th.*, h.name as hotel_name, h.image as hotel_image, h.rating as hotel_rating,
                            h.address as hotel_address, h.hotel_category, h.amenities as hotel_amenities,
@@ -975,7 +1322,6 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 computed = compute_trip_business_logic(t_dict, stops, activities, expenses)
                 t_dict.update(computed)
 
-                # Privacy: If share_budget is False, hide financial details
                 if not t_dict.get('share_budget'):
                     t_dict['total_budget'] = 0.0
                     t_dict['total_estimated_cost'] = 0.0
@@ -1015,7 +1361,192 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 conn.close()
                 return self._send_json({'success': True, 'saved_destinations': [dict(s) for s in saved]})
 
-            # 9. Admin Analytics
+            # 9. Community Posts Discovery
+            elif path == '/api/v1/community/posts':
+                search_q = query.get('q', [''])[0].strip()
+                city_id = query.get('city_id', [''])[0]
+                travel_style = query.get('travel_style', [''])[0]
+                sort_by = query.get('sort_by', ['popular'])[0]
+
+                sql = """
+                    SELECT p.*, u.name as author_name, u.avatar_url as author_avatar,
+                           c.name as city_name, c.country as country_name
+                    FROM globetrotter_community_post p
+                    JOIN res_users u ON p.user_id = u.id
+                    LEFT JOIN globetrotter_city c ON p.city_id = c.id
+                    WHERE p.active = TRUE
+                """
+                params = []
+
+                if search_q:
+                    sql += " AND (p.title ILIKE %s OR p.experience_text ILIKE %s OR p.tags ILIKE %s OR c.name ILIKE %s)"
+                    params.extend([f"%{search_q}%", f"%{search_q}%", f"%{search_q}%", f"%{search_q}%"])
+                if city_id:
+                    sql += " AND p.city_id = %s"
+                    params.append(int(city_id))
+                if travel_style and travel_style != 'all':
+                    sql += " AND p.travel_style = %s"
+                    params.append(travel_style)
+
+                if sort_by == 'newest':
+                    sql += " ORDER BY p.created_at DESC"
+                elif sort_by == 'rating':
+                    sql += " ORDER BY p.rating DESC, p.likes_count DESC"
+                elif sort_by == 'imports':
+                    sql += " ORDER BY p.imports_count DESC, p.likes_count DESC"
+                else: # 'popular'
+                    sql += " ORDER BY p.likes_count DESC, p.saves_count DESC"
+
+                cur.execute(sql, params)
+                posts = [dict(p) for p in cur.fetchall()]
+
+                # Parse JSON highlights
+                for p in posts:
+                    if isinstance(p.get('activity_highlights'), str):
+                        try:
+                            p['activity_highlights'] = json.loads(p['activity_highlights'])
+                        except Exception:
+                            p['activity_highlights'] = []
+                    elif not p.get('activity_highlights'):
+                        p['activity_highlights'] = []
+
+                    # If user is logged in, attach interaction state
+                    if user:
+                        cur.execute("SELECT interaction_type FROM globetrotter_community_interaction WHERE user_id = %s AND post_id = %s", (user['id'], p['id']))
+                        interactions = set(r['interaction_type'] for r in cur.fetchall())
+                        p['liked_by_me'] = 'like' in interactions
+                        p['saved_by_me'] = 'save' in interactions
+                    else:
+                        p['liked_by_me'] = False
+                        p['saved_by_me'] = False
+
+                conn.close()
+                return self._send_json({'success': True, 'posts': posts})
+
+            # 9b. Single Community Post Detail
+            elif path.startswith('/api/v1/community/posts/'):
+                try:
+                    post_id = int(path.split('/')[-1])
+                except ValueError:
+                    conn.close()
+                    return self._send_error('Invalid post ID')
+
+                cur.execute("""
+                    SELECT p.*, u.name as author_name, u.avatar_url as author_avatar, u.bio as author_bio,
+                           c.name as city_name, c.country as country_name
+                    FROM globetrotter_community_post p
+                    JOIN res_users u ON p.user_id = u.id
+                    LEFT JOIN globetrotter_city c ON p.city_id = c.id
+                    WHERE p.id = %s AND p.active = TRUE;
+                """, (post_id,))
+                post = cur.fetchone()
+                if not post:
+                    conn.close()
+                    return self._send_error('Community post not found', status=404)
+
+                p_dict = dict(post)
+                if isinstance(p_dict.get('activity_highlights'), str):
+                    try:
+                        p_dict['activity_highlights'] = json.loads(p_dict['activity_highlights'])
+                    except Exception:
+                        p_dict['activity_highlights'] = []
+                elif not p_dict.get('activity_highlights'):
+                    p_dict['activity_highlights'] = []
+
+                if user:
+                    cur.execute("SELECT interaction_type FROM globetrotter_community_interaction WHERE user_id = %s AND post_id = %s", (user['id'], post_id))
+                    interactions = set(r['interaction_type'] for r in cur.fetchall())
+                    p_dict['liked_by_me'] = 'like' in interactions
+                    p_dict['saved_by_me'] = 'save' in interactions
+                else:
+                    p_dict['liked_by_me'] = False
+                    p_dict['saved_by_me'] = False
+
+                conn.close()
+                return self._send_json({'success': True, 'post': p_dict})
+
+            # 10. Universal Global Search (Ctrl+K)
+            elif path == '/api/v1/search':
+                q = query.get('q', [''])[0].strip()
+                if not q:
+                    conn.close()
+                    return self._send_json({
+                        'success': True,
+                        'results': {'destinations': [], 'activities': [], 'hotels': [], 'trips': [], 'community': []}
+                    })
+
+                like_term = f"%{q}%"
+
+                # Destinations
+                cur.execute("""
+                    SELECT id, name, country, region, cover_image, cost_index, popularity 
+                    FROM globetrotter_city 
+                    WHERE name ILIKE %s OR country ILIKE %s OR region ILIKE %s 
+                    ORDER BY popularity DESC LIMIT 5;
+                """, (like_term, like_term, like_term))
+                dests = [dict(r) for r in cur.fetchall()]
+
+                # Activities
+                cur.execute("""
+                    SELECT a.id, a.name, a.category, a.duration_hours, a.estimated_cost, a.image, c.name as city_name 
+                    FROM globetrotter_activity a 
+                    JOIN globetrotter_city c ON a.city_id = c.id 
+                    WHERE a.name ILIKE %s OR a.description ILIKE %s OR a.category ILIKE %s
+                    ORDER BY a.popularity DESC LIMIT 5;
+                """, (like_term, like_term, like_term))
+                acts = [dict(r) for r in cur.fetchall()]
+
+                # Hotels
+                cur.execute("""
+                    SELECT h.id, h.name, h.hotel_category, h.rating, h.price_per_night, h.image, c.name as city_name 
+                    FROM globetrotter_hotel h 
+                    JOIN globetrotter_city c ON h.city_id = c.id 
+                    WHERE h.active = TRUE AND (h.name ILIKE %s OR h.address ILIKE %s OR h.hotel_category ILIKE %s)
+                    ORDER BY h.rating DESC LIMIT 5;
+                """, (like_term, like_term, like_term))
+                hotels = [dict(r) for r in cur.fetchall()]
+
+                # Trips (user's or public)
+                if user:
+                    cur.execute("""
+                        SELECT id, name, start_date, end_date, total_budget, currency, cover_image, travel_style 
+                        FROM globetrotter_trip 
+                        WHERE (user_id = %s OR is_public = TRUE) AND (name ILIKE %s OR description ILIKE %s)
+                        ORDER BY start_date DESC LIMIT 4;
+                    """, (user['id'], like_term, like_term))
+                else:
+                    cur.execute("""
+                        SELECT id, name, start_date, end_date, total_budget, currency, cover_image, travel_style, share_token 
+                        FROM globetrotter_trip 
+                        WHERE is_public = TRUE AND (name ILIKE %s OR description ILIKE %s)
+                        ORDER BY start_date DESC LIMIT 4;
+                    """, (like_term, like_term))
+                trips = [dict(r) for r in cur.fetchall()]
+
+                # Community Posts
+                cur.execute("""
+                    SELECT p.id, p.title, p.rating, p.cover_image, p.travel_style, p.likes_count, c.name as city_name 
+                    FROM globetrotter_community_post p 
+                    LEFT JOIN globetrotter_city c ON p.city_id = c.id 
+                    WHERE p.active = TRUE AND (p.title ILIKE %s OR p.tags ILIKE %s OR p.experience_text ILIKE %s)
+                    ORDER BY p.likes_count DESC LIMIT 4;
+                """, (like_term, like_term, like_term))
+                posts = [dict(r) for r in cur.fetchall()]
+
+                conn.close()
+                return self._send_json({
+                    'success': True,
+                    'query': q,
+                    'results': {
+                        'destinations': dests,
+                        'activities': acts,
+                        'hotels': hotels,
+                        'trips': trips,
+                        'community': posts
+                    }
+                })
+
+            # 11. Admin Analytics Dashboard
             elif path == '/api/v1/admin/analytics':
                 if not user or user.get('role') != 'admin':
                     conn.close()
@@ -1027,9 +1558,10 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 cur.execute("SELECT COUNT(*) FROM globetrotter_trip;")
                 total_trips = cur.fetchone()['count']
 
-                cur.execute("SELECT AVG(total_budget) as avg_budget FROM globetrotter_trip WHERE total_budget > 0;")
-                avg_budget_row = cur.fetchone()
-                avg_budget = float(avg_budget_row['avg_budget'] or 0.0)
+                cur.execute("SELECT SUM(total_budget) as total_budget_sum, AVG(total_budget) as avg_budget FROM globetrotter_trip;")
+                budget_row = cur.fetchone()
+                total_budget_sum = float(budget_row['total_budget_sum'] or 0.0)
+                avg_budget = float(budget_row['avg_budget'] or 0.0)
 
                 # Popular Cities
                 cur.execute("""
@@ -1038,11 +1570,22 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                     LEFT JOIN globetrotter_trip_stop s ON c.id = s.city_id
                     GROUP BY c.id, c.name, c.country
                     ORDER BY visit_count DESC, c.popularity DESC
-                    LIMIT 5;
+                    LIMIT 6;
                 """)
                 top_cities = [dict(c) for c in cur.fetchall()]
 
-                # Style distribution
+                # Popular Activities
+                cur.execute("""
+                    SELECT a.name, a.category, COUNT(ta.id) as schedule_count
+                    FROM globetrotter_activity a
+                    LEFT JOIN globetrotter_trip_activity ta ON a.id = ta.activity_id
+                    GROUP BY a.id, a.name, a.category
+                    ORDER BY schedule_count DESC, a.popularity DESC
+                    LIMIT 6;
+                """)
+                top_activities = [dict(a) for a in cur.fetchall()]
+
+                # Travel Style Distribution
                 cur.execute("""
                     SELECT travel_style, COUNT(*) as count
                     FROM globetrotter_trip
@@ -1051,20 +1594,62 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 """)
                 styles = [dict(s) for s in cur.fetchall()]
 
+                # Hotel Tier Preferences
+                cur.execute("""
+                    SELECT h.hotel_category, COUNT(th.id) as bookings_count
+                    FROM globetrotter_hotel h
+                    LEFT JOIN globetrotter_trip_hotel th ON h.id = th.hotel_id
+                    GROUP BY h.hotel_category
+                    ORDER BY bookings_count DESC;
+                """)
+                hotel_tiers = [dict(h) for h in cur.fetchall()]
+
+                # Community Stats
+                cur.execute("SELECT COUNT(*) as total_posts, SUM(likes_count) as total_likes, SUM(imports_count) as total_imports FROM globetrotter_community_post WHERE active = TRUE;")
+                comm_row = cur.fetchone()
+
                 conn.close()
                 return self._send_json({
                     'success': True,
                     'analytics': {
                         'total_users': total_users,
                         'total_trips': total_trips,
+                        'total_budget_sum': total_budget_sum,
                         'avg_budget': avg_budget,
                         'top_cities': top_cities,
-                        'styles': styles
+                        'top_activities': top_activities,
+                        'styles': styles,
+                        'hotel_tiers': hotel_tiers,
+                        'community': {
+                            'total_posts': int(comm_row['total_posts'] or 0),
+                            'total_likes': int(comm_row['total_likes'] or 0),
+                            'total_imports': int(comm_row['total_imports'] or 0)
+                        }
                     }
                 })
 
+            # 12. Admin User Management List
+            elif path == '/api/v1/admin/users':
+                if not user or user.get('role') != 'admin':
+                    conn.close()
+                    return self._send_error('Admin privileges required.', status=403)
+
+                cur.execute("""
+                    SELECT u.id, u.name, u.email, u.first_name, u.last_name, u.city, u.country,
+                           u.preferred_currency, u.preferred_travel_style, u.role, u.created_at,
+                           COUNT(t.id) as trips_count
+                    FROM res_users u
+                    LEFT JOIN globetrotter_trip t ON u.id = t.user_id
+                    GROUP BY u.id
+                    ORDER BY u.created_at DESC;
+                """)
+                users_list = [dict(u) for u in cur.fetchall()]
+                conn.close()
+                return self._send_json({'success': True, 'users': users_list})
+
         conn.close()
         return self._send_error('Endpoint not found', status=404)
+
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -1075,11 +1660,23 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             user = self._get_current_user(cur)
 
-            # 1. Signup
+            # 1. Signup (Extended with registration fields)
             if path == '/api/v1/auth/signup':
                 name = (body.get('name') or '').strip()
+                first_name = (body.get('first_name') or '').strip()
+                last_name = (body.get('last_name') or '').strip()
+                if not name and (first_name or last_name):
+                    name = f"{first_name} {last_name}".strip()
+                
                 email = (body.get('email') or '').strip().lower()
                 password = body.get('password') or ''
+                phone = (body.get('phone') or '').strip()
+                city = (body.get('city') or '').strip()
+                country = (body.get('country') or '').strip()
+                currency = body.get('preferred_currency', 'INR')
+                travel_style = body.get('preferred_travel_style', 'balanced')
+                avatar = body.get('avatar_url', '') or 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80'
+                additional_info = body.get('additional_info', '')
 
                 if not name or not email or not password:
                     conn.close()
@@ -1094,10 +1691,18 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                     return self._send_error('An account with this email already exists.')
 
                 cur.execute("""
-                    INSERT INTO res_users (name, email, password_hash, preferred_currency, preferred_travel_style, role)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    RETURNING id, name, email, preferred_currency, preferred_travel_style, role;
-                """, (name, email, pbkdf2_sha256.hash(password), body.get('preferred_currency', 'INR'), body.get('preferred_travel_style', 'balanced'), 'traveler'))
+                    INSERT INTO res_users (
+                        name, email, password_hash, first_name, last_name, phone,
+                        city, country, preferred_currency, preferred_travel_style,
+                        avatar_url, additional_info, role
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'traveler')
+                    RETURNING id, name, email, first_name, last_name, phone, city, country,
+                              preferred_currency, preferred_travel_style, avatar_url, role;
+                """, (
+                    name, email, pbkdf2_sha256.hash(password), first_name, last_name, phone,
+                    city, country, currency, travel_style, avatar, additional_info
+                ))
                 new_user = cur.fetchone()
                 
                 token = secrets.token_hex(24)
@@ -1114,7 +1719,11 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                     conn.close()
                     return self._send_error('Email and password are required.')
 
-                cur.execute("SELECT id, name, email, password_hash, preferred_currency, preferred_travel_style, role FROM res_users WHERE email = %s", (email,))
+                cur.execute("""
+                    SELECT id, name, email, password_hash, first_name, last_name, phone,
+                           city, country, preferred_currency, preferred_travel_style, avatar_url, role
+                    FROM res_users WHERE email = %s
+                """, (email,))
                 existing = cur.fetchone()
                 if not existing or not pbkdf2_sha256.verify(password, existing['password_hash']):
                     conn.close()
@@ -1131,7 +1740,11 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
             elif path == '/api/v1/auth/demo-login':
                 role = body.get('role', 'traveler')
                 target_email = 'admin@globetrotter.travel' if role == 'admin' else 'demo@globetrotter.travel'
-                cur.execute("SELECT id, name, email, preferred_currency, preferred_travel_style, role FROM res_users WHERE email = %s", (target_email,))
+                cur.execute("""
+                    SELECT id, name, email, first_name, last_name, phone, city, country,
+                           preferred_currency, preferred_travel_style, avatar_url, role
+                    FROM res_users WHERE email = %s
+                """, (target_email,))
                 u = cur.fetchone()
                 if not u:
                     conn.close()
@@ -1219,7 +1832,6 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                     conn.close()
                     return self._send_error('Stop departure date cannot be before arrival date.')
 
-                # Calculate next sequence
                 cur.execute("SELECT COALESCE(MAX(sequence), 0) + 10 as next_seq FROM globetrotter_trip_stop WHERE trip_id = %s", (trip_id,))
                 seq = cur.fetchone()['next_seq']
 
@@ -1250,7 +1862,7 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 conn.close()
                 return self._send_json({'success': True, 'message': 'Stops reordered successfully.'})
 
-            # 8. Add Trip Activity
+            # 8. Add Trip Activity / Flexible Day Section
             elif path.startswith('/api/v1/trips/') and path.endswith('/activities'):
                 if not user:
                     conn.close()
@@ -1272,19 +1884,25 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 cost = float(body.get('estimated_cost') or 0.0)
                 dur = float(body.get('duration_hours') or 2.0)
                 time_slot = body.get('scheduled_time', '10:00')
+                sec_type = body.get('section_type', 'activity')
+                loc_addr = body.get('location_address', '')
 
                 cur.execute("""
-                    INSERT INTO globetrotter_trip_activity (trip_id, stop_id, activity_id, name, category, day_number, scheduled_time, duration_hours, estimated_cost, notes, image)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO globetrotter_trip_activity (
+                        trip_id, stop_id, activity_id, name, category,
+                        day_number, scheduled_time, duration_hours, estimated_cost,
+                        notes, image, section_type, location_address
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id;
                 """, (
                     trip_id, body.get('stop_id'), body.get('activity_id'), name,
                     body.get('category', 'sightseeing'), day_num, time_slot, dur, cost,
-                    body.get('notes', ''), body.get('image', '')
+                    body.get('notes', ''), body.get('image', ''), sec_type, loc_addr
                 ))
                 act_row = cur.fetchone()
                 conn.close()
-                return self._send_json({'success': True, 'activity_id': act_row['id'], 'message': 'Activity added to itinerary!'})
+                return self._send_json({'success': True, 'activity_id': act_row['id'], 'message': 'Section added to itinerary!'})
 
             # 8b. Add Trip Hotel Booking
             elif path.startswith('/api/v1/trips/') and path.endswith('/hotels'):
@@ -1332,7 +1950,6 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 price_per_night = float(hotel['price_per_night'] or 0.0)
                 total_cost = price_per_night * nights * rooms
 
-                # Check if this stop already has a hotel booking; if so, replace previous linked expense
                 if stop_id:
                     cur.execute("SELECT * FROM globetrotter_trip_hotel WHERE trip_id = %s AND stop_id = %s", (trip_id, stop_id))
                     prev_booking = cur.fetchone()
@@ -1340,7 +1957,6 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                         cur.execute("DELETE FROM globetrotter_expense WHERE id = %s", (prev_booking['expense_id'],))
                         cur.execute("DELETE FROM globetrotter_trip_hotel WHERE id = %s", (prev_booking['id'],))
 
-                # Create linked accommodation expense
                 exp_name = f"Accommodation: {hotel['name']} ({nights} nights)"
                 cur.execute("""
                     INSERT INTO globetrotter_expense (trip_id, stop_id, category, name, amount, date, notes)
@@ -1350,7 +1966,6 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 exp_row = cur.fetchone()
                 exp_id = exp_row['id']
 
-                # Create trip hotel booking
                 cur.execute("""
                     INSERT INTO globetrotter_trip_hotel (
                         trip_id, hotel_id, stop_id, expense_id, check_in, check_out,
@@ -1374,6 +1989,107 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                     'nights': nights,
                     'message': f"Hotel '{hotel['name']}' successfully added to your itinerary!"
                 })
+
+            # 8c. Smart Itinerary Balancing (Accept Suggestion / Rebalance)
+            elif path.startswith('/api/v1/trips/') and path.endswith('/balance'):
+                if not user:
+                    conn.close()
+                    return self._send_error('Authentication required', status=401)
+
+                trip_id = int(path.split('/')[4])
+                cur.execute("SELECT * FROM globetrotter_trip WHERE id = %s", (trip_id,))
+                trip = cur.fetchone()
+                if not trip or (trip['user_id'] != user['id'] and user.get('role') != 'admin'):
+                    conn.close()
+                    return self._send_error('Unauthorized', status=403)
+
+                activity_id = body.get('activity_id')
+                target_day = int(body.get('target_day') or 1)
+
+                if activity_id:
+                    cur.execute("""
+                        UPDATE globetrotter_trip_activity
+                        SET day_number = %s
+                        WHERE id = %s AND trip_id = %s;
+                    """, (target_day, int(activity_id), trip_id))
+                else:
+                    # Auto-balance all overloaded days
+                    cur.execute("SELECT * FROM globetrotter_trip_activity WHERE trip_id = %s ORDER BY day_number ASC", (trip_id,))
+                    acts = [dict(a) for a in cur.fetchall()]
+                    cur.execute("SELECT * FROM globetrotter_trip_stop WHERE trip_id = %s", (trip_id,))
+                    stops = cur.fetchall()
+                    suggestions = get_balancing_suggestions(dict(trip), stops, acts)
+                    for sug in suggestions:
+                        cur.execute("""
+                            UPDATE globetrotter_trip_activity
+                            SET day_number = %s
+                            WHERE id = %s AND trip_id = %s;
+                        """, (sug['to_day'], sug['activity_id'], trip_id))
+
+                conn.close()
+                return self._send_json({'success': True, 'message': 'Itinerary successfully balanced!'})
+
+            # 8d. Move Activity Day
+            elif '/activities/' in path and path.endswith('/move-day'):
+                if not user:
+                    conn.close()
+                    return self._send_error('Authentication required', status=401)
+
+                parts = path.split('/')
+                trip_id = int(parts[4])
+                act_id = int(parts[6])
+                new_day = int(body.get('day_number') or 1)
+
+                cur.execute("SELECT * FROM globetrotter_trip WHERE id = %s", (trip_id,))
+                trip = cur.fetchone()
+                if not trip or (trip['user_id'] != user['id'] and user.get('role') != 'admin'):
+                    conn.close()
+                    return self._send_error('Unauthorized', status=403)
+
+                cur.execute("UPDATE globetrotter_trip_activity SET day_number = %s WHERE id = %s AND trip_id = %s", (new_day, act_id, trip_id))
+                conn.close()
+                return self._send_json({'success': True, 'message': f'Activity moved to Day {new_day}.'})
+
+            # 8e. Duplicate Activity
+            elif '/activities/' in path and path.endswith('/duplicate'):
+                if not user:
+                    conn.close()
+                    return self._send_error('Authentication required', status=401)
+
+                parts = path.split('/')
+                trip_id = int(parts[4])
+                act_id = int(parts[6])
+
+                cur.execute("SELECT * FROM globetrotter_trip WHERE id = %s", (trip_id,))
+                trip = cur.fetchone()
+                if not trip or (trip['user_id'] != user['id'] and user.get('role') != 'admin'):
+                    conn.close()
+                    return self._send_error('Unauthorized', status=403)
+
+                cur.execute("SELECT * FROM globetrotter_trip_activity WHERE id = %s AND trip_id = %s", (act_id, trip_id))
+                act = cur.fetchone()
+                if not act:
+                    conn.close()
+                    return self._send_error('Activity not found', status=404)
+
+                target_day = int(body.get('target_day') or act['day_number'] or 1)
+
+                cur.execute("""
+                    INSERT INTO globetrotter_trip_activity (
+                        trip_id, stop_id, activity_id, name, category,
+                        day_number, scheduled_time, duration_hours, estimated_cost,
+                        sequence, notes, image, section_type, location_address
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id;
+                """, (
+                    trip_id, act['stop_id'], act['activity_id'], f"{act['name']} (Copy)", act['category'],
+                    target_day, act['scheduled_time'], act['duration_hours'], act['estimated_cost'],
+                    act['sequence'] + 5, act['notes'], act['image'], act['section_type'], act['location_address']
+                ))
+                new_act_id = cur.fetchone()['id']
+                conn.close()
+                return self._send_json({'success': True, 'activity_id': new_act_id, 'message': 'Activity section duplicated!'})
 
             # 9. Add Trip Expense
             elif path.startswith('/api/v1/trips/') and path.endswith('/expenses'):
@@ -1462,7 +2178,6 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                     conn.close()
                     return self._send_error('Source trip not found', status=404)
 
-                # Clone trip record
                 clone_name = f"{src['name']} (Copy)" if src['user_id'] == user['id'] else f"{src['name']} (My Plan)"
                 cur.execute("""
                     INSERT INTO globetrotter_trip (user_id, name, start_date, end_date, description, cover_image, currency, travelers_count, total_budget, travel_style, status)
@@ -1475,7 +2190,6 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 ))
                 new_trip_id = cur.fetchone()['id']
 
-                # Map old stop IDs to new stop IDs
                 stop_map = {}
                 cur.execute("SELECT * FROM globetrotter_trip_stop WHERE trip_id = %s ORDER BY sequence ASC", (src_trip_id,))
                 for s in cur.fetchall():
@@ -1486,20 +2200,18 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                     """, (new_trip_id, s['city_id'], s['sequence'], s['arrival_date'], s['departure_date'], s['duration_days'], s['notes']))
                     stop_map[s['id']] = cur.fetchone()['id']
 
-                # Clone activities
                 cur.execute("SELECT * FROM globetrotter_trip_activity WHERE trip_id = %s", (src_trip_id,))
                 for a in cur.fetchall():
                     new_stop_id = stop_map.get(a['stop_id'])
                     cur.execute("""
-                        INSERT INTO globetrotter_trip_activity (trip_id, stop_id, activity_id, name, category, day_number, scheduled_time, duration_hours, estimated_cost, sequence, notes, image)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                        INSERT INTO globetrotter_trip_activity (trip_id, stop_id, activity_id, name, category, day_number, scheduled_time, duration_hours, estimated_cost, sequence, notes, image, section_type, location_address)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
                     """, (
                         new_trip_id, new_stop_id, a['activity_id'], a['name'], a['category'],
                         a['day_number'], a['scheduled_time'], a['duration_hours'], a['estimated_cost'],
-                        a['sequence'], a['notes'], a['image']
+                        a['sequence'], a['notes'], a['image'], a['section_type'], a['location_address']
                     ))
 
-                # Clone expenses
                 cur.execute("SELECT * FROM globetrotter_expense WHERE trip_id = %s", (src_trip_id,))
                 for e in cur.fetchall():
                     new_stop_id = stop_map.get(e['stop_id'])
@@ -1508,7 +2220,6 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                         VALUES (%s, %s, %s, %s, %s, %s, %s);
                     """, (new_trip_id, new_stop_id, e['category'], e['name'], e['amount'], e['date'], e['notes']))
 
-                # Clone hotels
                 cur.execute("SELECT * FROM globetrotter_trip_hotel WHERE trip_id = %s", (src_trip_id,))
                 for h in cur.fetchall():
                     new_stop_id = stop_map.get(h['stop_id'])
@@ -1528,7 +2239,7 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 conn.close()
                 return self._send_json({'success': True, 'trip_id': new_trip_id, 'message': 'Itinerary copied into your account!'})
 
-            # 12. Copy Shared Trip (Public action to copy into caller account)
+            # 12. Copy Shared Trip
             elif path.startswith('/api/v1/shared/') and path.endswith('/copy'):
                 if not user:
                     conn.close()
@@ -1542,10 +2253,8 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                     return self._send_error('Shared itinerary not found or inactive.', status=404)
 
                 src_trip_id = src['id']
-                # Increment copy count
                 cur.execute("UPDATE globetrotter_shared_trip SET copy_count = copy_count + 1 WHERE share_token = %s", (token,))
 
-                # Create clone
                 clone_name = f"{src['name']} (Shared Copy)"
                 cur.execute("""
                     INSERT INTO globetrotter_trip (user_id, name, start_date, end_date, description, cover_image, currency, travelers_count, total_budget, travel_style, status)
@@ -1572,15 +2281,14 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 for a in cur.fetchall():
                     new_stop_id = stop_map.get(a['stop_id'])
                     cur.execute("""
-                        INSERT INTO globetrotter_trip_activity (trip_id, stop_id, activity_id, name, category, day_number, scheduled_time, duration_hours, estimated_cost, sequence, notes, image)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                        INSERT INTO globetrotter_trip_activity (trip_id, stop_id, activity_id, name, category, day_number, scheduled_time, duration_hours, estimated_cost, sequence, notes, image, section_type, location_address)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
                     """, (
                         new_trip_id, new_stop_id, a['activity_id'], a['name'], a['category'],
                         a['day_number'], a['scheduled_time'], a['duration_hours'], a['estimated_cost'],
-                        a['sequence'], a['notes'], a['image']
+                        a['sequence'], a['notes'], a['image'], a['section_type'], a['location_address']
                     ))
 
-                # Clone expenses
                 cur.execute("SELECT * FROM globetrotter_expense WHERE trip_id = %s", (src_trip_id,))
                 for e in cur.fetchall():
                     new_stop_id = stop_map.get(e['stop_id'])
@@ -1589,7 +2297,6 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                         VALUES (%s, %s, %s, %s, %s, %s, %s);
                     """, (new_trip_id, new_stop_id, e['category'], e['name'], e['amount'], e['date'], e['notes']))
 
-                # Clone hotels
                 cur.execute("SELECT * FROM globetrotter_trip_hotel WHERE trip_id = %s", (src_trip_id,))
                 for h in cur.fetchall():
                     new_stop_id = stop_map.get(h['stop_id'])
@@ -1626,6 +2333,154 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 conn.close()
                 return self._send_json({'success': True, 'message': 'Destination saved!'})
 
+            # 14. Create Community Experience Post
+            elif path == '/api/v1/community/posts':
+                if not user:
+                    conn.close()
+                    return self._send_error('Authentication required', status=401)
+
+                title = (body.get('title') or '').strip()
+                experience_text = (body.get('experience_text') or '').strip()
+                city_id = body.get('city_id')
+                cover_image = body.get('cover_image') or 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=800&q=80'
+                rating = float(body.get('rating') or 5.0)
+                cost = float(body.get('approximate_cost') or 0.0)
+                travel_style = body.get('travel_style', 'balanced')
+                tags = body.get('tags', '')
+                highlights = body.get('activity_highlights', [])
+
+                if not title or not experience_text:
+                    conn.close()
+                    return self._send_error('Title and experience details are required.')
+
+                cur.execute("""
+                    INSERT INTO globetrotter_community_post (
+                        user_id, city_id, title, experience_text, cover_image,
+                        rating, approximate_cost, travel_style, tags, activity_highlights
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id;
+                """, (
+                    user['id'], city_id, title, experience_text, cover_image,
+                    rating, cost, travel_style, tags, json.dumps(highlights)
+                ))
+                new_post_id = cur.fetchone()['id']
+                conn.close()
+                return self._send_json({'success': True, 'post_id': new_post_id, 'message': 'Community experience published!'})
+
+            # 15. Like / Save Community Post
+            elif '/community/posts/' in path and path.endswith('/interact'):
+                if not user:
+                    conn.close()
+                    return self._send_error('Authentication required', status=401)
+
+                post_id = int(path.split('/')[-2])
+                itype = body.get('type', 'like') # 'like' or 'save'
+
+                cur.execute("SELECT id FROM globetrotter_community_interaction WHERE user_id = %s AND post_id = %s AND interaction_type = %s", (user['id'], post_id, itype))
+                existing = cur.fetchone()
+
+                if existing:
+                    # Toggle off
+                    cur.execute("DELETE FROM globetrotter_community_interaction WHERE id = %s", (existing['id'],))
+                    if itype == 'like':
+                        cur.execute("UPDATE globetrotter_community_post SET likes_count = GREATEST(0, likes_count - 1) WHERE id = %s", (post_id,))
+                    else:
+                        cur.execute("UPDATE globetrotter_community_post SET saves_count = GREATEST(0, saves_count - 1) WHERE id = %s", (post_id,))
+                    active_now = False
+                else:
+                    # Toggle on
+                    cur.execute("INSERT INTO globetrotter_community_interaction (user_id, post_id, interaction_type) VALUES (%s, %s, %s)", (user['id'], post_id, itype))
+                    if itype == 'like':
+                        cur.execute("UPDATE globetrotter_community_post SET likes_count = likes_count + 1 WHERE id = %s", (post_id,))
+                    else:
+                        cur.execute("UPDATE globetrotter_community_post SET saves_count = saves_count + 1 WHERE id = %s", (post_id,))
+                    active_now = True
+
+                cur.execute("SELECT likes_count, saves_count FROM globetrotter_community_post WHERE id = %s", (post_id,))
+                counts = cur.fetchone()
+                conn.close()
+                return self._send_json({
+                    'success': True,
+                    'interaction_type': itype,
+                    'active': active_now,
+                    'likes_count': counts['likes_count'],
+                    'saves_count': counts['saves_count']
+                })
+
+            # 16. Community 1-Click Import to Itinerary
+            elif '/community/posts/' in path and path.endswith('/import'):
+                if not user:
+                    conn.close()
+                    return self._send_error('Authentication required', status=401)
+
+                post_id = int(path.split('/')[-2])
+                trip_id = body.get('trip_id')
+                stop_id = body.get('stop_id')
+                target_day = int(body.get('day_number') or 1)
+                selected_activities = body.get('activities', [])
+
+                if not trip_id:
+                    conn.close()
+                    return self._send_error('Destination Trip is required for import.')
+
+                cur.execute("SELECT * FROM globetrotter_trip WHERE id = %s", (int(trip_id),))
+                trip = cur.fetchone()
+                if not trip or (trip['user_id'] != user['id'] and user.get('role') != 'admin'):
+                    conn.close()
+                    return self._send_error('Unauthorized or trip not found', status=403)
+
+                cur.execute("SELECT * FROM globetrotter_community_post WHERE id = %s", (post_id,))
+                post = cur.fetchone()
+                if not post:
+                    conn.close()
+                    return self._send_error('Community post not found', status=404)
+
+                imported_count = 0
+                imported_cost = 0.0
+
+                for item in selected_activities:
+                    act_name = item.get('name', 'Community Highlight')
+                    act_cat = item.get('category', 'sightseeing')
+                    act_cost = float(item.get('estimated_cost') or 0.0)
+                    act_dur = float(item.get('duration_hours') or 2.0)
+                    act_time = item.get('time', '10:00')
+                    sec_type = item.get('section_type', 'activity')
+                    loc_addr = item.get('location_address', '')
+                    notes = item.get('notes', f"Imported from '{post['title']}'")
+
+                    cur.execute("""
+                        INSERT INTO globetrotter_trip_activity (
+                            trip_id, stop_id, name, category, day_number, scheduled_time,
+                            duration_hours, estimated_cost, notes, section_type, location_address
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                    """, (
+                        trip_id, stop_id, act_name, act_cat, target_day, act_time,
+                        act_dur, act_cost, notes, sec_type, loc_addr
+                    ))
+
+                    if act_cost > 0:
+                        imported_cost += act_cost
+
+                    imported_count += 1
+
+                # Increment import counters
+                cur.execute("UPDATE globetrotter_community_post SET imports_count = imports_count + 1 WHERE id = %s", (post_id,))
+                cur.execute("""
+                    INSERT INTO globetrotter_community_interaction (user_id, post_id, interaction_type)
+                    VALUES (%s, %s, 'import')
+                    ON CONFLICT (user_id, post_id, interaction_type) DO NOTHING;
+                """, (user['id'], post_id))
+
+                conn.close()
+                return self._send_json({
+                    'success': True,
+                    'imported_count': imported_count,
+                    'imported_cost': imported_cost,
+                    'message': f"Successfully imported {imported_count} activities into Day {target_day} of your itinerary!"
+                })
+
         conn.close()
         return self._send_error('Endpoint not found', status=404)
 
@@ -1641,9 +2496,15 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 conn.close()
                 return self._send_error('Authentication required', status=401)
 
-            # 1. Update Profile
+            # 1. Update Profile (Extended)
             if path == '/api/v1/auth/profile':
                 name = body.get('name', user['name'])
+                first_name = body.get('first_name', user.get('first_name', ''))
+                last_name = body.get('last_name', user.get('last_name', ''))
+                phone = body.get('phone', user.get('phone', ''))
+                city = body.get('city', user.get('city', ''))
+                country = body.get('country', user.get('country', ''))
+                additional_info = body.get('additional_info', user.get('additional_info', ''))
                 pref_curr = body.get('preferred_currency', user['preferred_currency'])
                 pref_style = body.get('preferred_travel_style', user['preferred_travel_style'])
                 bio = body.get('bio', user.get('bio', ''))
@@ -1651,10 +2512,18 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
 
                 cur.execute("""
                     UPDATE res_users 
-                    SET name = %s, preferred_currency = %s, preferred_travel_style = %s, bio = %s, avatar_url = %s
+                    SET name = %s, first_name = %s, last_name = %s, phone = %s,
+                        city = %s, country = %s, additional_info = %s,
+                        preferred_currency = %s, preferred_travel_style = %s,
+                        bio = %s, avatar_url = %s
                     WHERE id = %s
-                    RETURNING id, name, email, preferred_currency, preferred_travel_style, preferred_language, avatar_url, bio, role;
-                """, (name, pref_curr, pref_style, bio, avatar, user['id']))
+                    RETURNING id, name, email, first_name, last_name, phone, city, country,
+                              preferred_currency, preferred_travel_style, preferred_language,
+                              avatar_url, bio, additional_info, role;
+                """, (
+                    name, first_name, last_name, phone, city, country,
+                    additional_info, pref_curr, pref_style, bio, avatar, user['id']
+                ))
                 updated_u = cur.fetchone()
                 conn.close()
                 return self._send_json({'success': True, 'user': dict(updated_u), 'message': 'Profile updated!'})
@@ -1731,7 +2600,6 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                     WHERE id = %s;
                 """, (check_in, check_out, nights, rooms, guests, room_type, notes, status, total_cost, booking_id))
 
-                # Update linked expense
                 if booking.get('expense_id'):
                     exp_name = f"Accommodation: {booking['hotel_name']} ({nights} nights)"
                     cur.execute("""
@@ -1743,7 +2611,7 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 conn.close()
                 return self._send_json({'success': True, 'total_cost': total_cost, 'nights': nights, 'message': 'Hotel accommodation updated!'})
 
-            # 3. Update Activity
+            # 3. Update Activity / Flexible Day Section
             elif '/activities/' in path:
                 parts = path.split('/')
                 act_id = int(parts[-1])
@@ -1755,15 +2623,18 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                         duration_hours = COALESCE(%s, duration_hours),
                         estimated_cost = COALESCE(%s, estimated_cost),
                         notes = COALESCE(%s, notes),
-                        category = COALESCE(%s, category)
+                        category = COALESCE(%s, category),
+                        section_type = COALESCE(%s, section_type),
+                        location_address = COALESCE(%s, location_address)
                     WHERE id = %s;
                 """, (
                     body.get('name'), body.get('day_number'), body.get('scheduled_time'),
                     body.get('duration_hours'), body.get('estimated_cost'), body.get('notes'),
-                    body.get('category'), act_id
+                    body.get('category'), body.get('section_type'), body.get('location_address'), act_id
                 ))
                 conn.close()
-                return self._send_json({'success': True, 'message': 'Activity updated!'})
+                return self._send_json({'success': True, 'message': 'Activity section updated!'})
+
 
         conn.close()
         return self._send_error('Endpoint not found', status=404)

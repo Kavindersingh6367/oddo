@@ -48,12 +48,19 @@
                     <button class="nav-item" data-page="activities" onclick="navigateTo('activities')">
                         <i class="fa-solid fa-ticket"></i> Activities
                     </button>
+                    <button class="nav-item" data-page="community" onclick="navigateTo('community')">
+                        <i class="fa-solid fa-users"></i> Community Hub
+                    </button>
                     <button class="nav-item admin-only" id="nav-admin" style="display: none;" data-page="admin" onclick="navigateTo('admin')">
-                        <i class="fa-solid fa-chart-line"></i> Analytics
+                        <i class="fa-solid fa-chart-line"></i> Admin Analytics
                     </button>
                 </nav>
 
                 <div class="header-actions">
+                    <button class="btn btn-outline btn-search-trigger" onclick="openGlobalSearchModal()" title="Global Search (Ctrl+K)">
+                        <i class="fa-solid fa-magnifying-glass"></i> <span class="search-kbd-text">Search</span> <kbd class="search-kbd">Ctrl K</kbd>
+                    </button>
+
                     <button class="btn btn-primary btn-glow" onclick="openCreateTripModal()">
                         <i class="fa-solid fa-plus"></i> <span>Plan New Trip</span>
                     </button>

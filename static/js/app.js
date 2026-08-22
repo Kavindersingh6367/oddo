@@ -231,6 +231,8 @@ function navigateTo(page, param = null) {
         renderDestinationsCatalog();
     } else if (page === 'activities') {
         renderActivitiesCatalog();
+    } else if (page === 'community') {
+        renderCommunityHub();
     } else if (page === 'admin') {
         renderAdminDashboard();
     } else if (page === 'shared') {
@@ -329,10 +331,70 @@ async function renderDashboard() {
             </div>
         </div>
 
+        ${(state.user && state.user.travel_dna) ? `
+            <!-- Travel DNA Engine Profile Card -->
+            <div class="travel-dna-card">
+                <div class="travel-dna-header">
+                    <div>
+                        <div class="travel-dna-title">
+                            <i class="fa-solid fa-dna" style="color: #F97316;"></i> Travel DNA Profile
+                        </div>
+                        <div style="font-size: 0.85rem; color: #C7D2FE; margin-top: 0.2rem;">
+                            AI-modeled travel persona based on your destinations, activity choices, and pacing preferences.
+                        </div>
+                    </div>
+                    <span class="persona-badge-glow">
+                        <i class="fa-solid fa-sparkles"></i> ${escapeHtml(state.user.travel_dna.persona_title || 'Balanced Explorer')}
+                    </span>
+                </div>
+                <div class="dna-bars-grid">
+                    <div class="dna-bar-item">
+                        <div class="dna-bar-header">
+                            <span><i class="fa-solid fa-mountain" style="color: #F97316;"></i> Adventure</span>
+                            <span>${state.user.travel_dna.adventure || 50}%</span>
+                        </div>
+                        <div class="dna-bar-track"><div class="dna-bar-fill adventure" style="width: ${state.user.travel_dna.adventure || 50}%;"></div></div>
+                    </div>
+                    <div class="dna-bar-item">
+                        <div class="dna-bar-header">
+                            <span><i class="fa-solid fa-landmark-dome" style="color: #818CF8;"></i> Culture &amp; History</span>
+                            <span>${state.user.travel_dna.culture || 65}%</span>
+                        </div>
+                        <div class="dna-bar-track"><div class="dna-bar-fill culture" style="width: ${state.user.travel_dna.culture || 65}%;"></div></div>
+                    </div>
+                    <div class="dna-bar-item">
+                        <div class="dna-bar-header">
+                            <span><i class="fa-solid fa-utensils" style="color: #F43F5E;"></i> Food &amp; Dining</span>
+                            <span>${state.user.travel_dna.food || 70}%</span>
+                        </div>
+                        <div class="dna-bar-track"><div class="dna-bar-fill food" style="width: ${state.user.travel_dna.food || 70}%;"></div></div>
+                    </div>
+                    <div class="dna-bar-item">
+                        <div class="dna-bar-header">
+                            <span><i class="fa-solid fa-umbrella-beach" style="color: #34D399;"></i> Relaxation</span>
+                            <span>${state.user.travel_dna.relaxation || 45}%</span>
+                        </div>
+                        <div class="dna-bar-track"><div class="dna-bar-fill relaxation" style="width: ${state.user.travel_dna.relaxation || 45}%;"></div></div>
+                    </div>
+                    <div class="dna-bar-item">
+                        <div class="dna-bar-header">
+                            <span><i class="fa-solid fa-camera" style="color: #38BDF8;"></i> Sightseeing</span>
+                            <span>${state.user.travel_dna.sightseeing || 80}%</span>
+                        </div>
+                        <div class="dna-bar-track"><div class="dna-bar-fill sightseeing" style="width: ${state.user.travel_dna.sightseeing || 80}%;"></div></div>
+                    </div>
+                </div>
+                <div class="dna-insights-list">
+                    ${(state.user.travel_dna.insights || []).map(ins => `<div><i class="fa-solid fa-check" style="color: #34D399; margin-right: 0.4rem;"></i> ${escapeHtml(ins)}</div>`).join('')}
+                </div>
+            </div>
+        ` : ''}
+
         <!-- Recent Trips Section -->
         <div class="section-header">
             <h2 class="section-title"><i class="fa-solid fa-calendar-days" style="color: var(--primary);"></i> Your Travel Plans</h2>
             <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-outline btn-sm" onclick="navigateTo('community')"><i class="fa-solid fa-users"></i> Community Hub</button>
                 <button class="btn btn-outline btn-sm" onclick="navigateTo('trips')">View All Trips (${trips.length})</button>
                 <button class="btn btn-primary btn-sm" onclick="openCreateTripModal()"><i class="fa-solid fa-plus"></i> New Trip</button>
             </div>
@@ -645,8 +707,115 @@ function renderBuilderScheduleView(trip) {
     const stops = trip.stops || [];
     const activities = trip.activities || [];
     const durationDays = trip.duration_days || 1;
+    const health = trip.trip_health || null;
+    const balancing = trip.balancing_suggestions || [];
 
-    let html = `
+    let html = ``;
+
+    // 1. Trip Health & Diagnostics Widget
+    if (health) {
+        let badgeColor = 'emerald';
+        if (health.health_score < 60) badgeColor = 'rose';
+        else if (health.health_score < 80) badgeColor = 'amber';
+
+        const bk = health.breakdown || {};
+        html += `
+            <div class="trip-health-card">
+                <div class="health-header-row">
+                    <div class="health-score-container">
+                        <div class="health-circle-badge ${badgeColor}">
+                            <span class="health-circle-num">${health.health_score}</span>
+                            <span class="health-circle-label">HEALTH</span>
+                        </div>
+                        <div>
+                            <h3 style="font-size: 1.2rem; margin-bottom: 0.2rem;">
+                                Trip Health Diagnostics: <span style="color: var(--primary);">${escapeHtml(health.verdict || 'Good Balance')}</span>
+                            </h3>
+                            <div style="font-size: 0.85rem; color: var(--text-muted);">
+                                Multi-factor intelligence score evaluating budget discipline, pacing, daily density, and accommodation coverage.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="health-dimensions-grid">
+                    <div class="health-dim-item">
+                        <div class="health-dim-top">
+                            <span>Budget Discipline</span>
+                            <span>${bk.budget_health || 25}/30</span>
+                        </div>
+                        <div class="health-dim-track"><div class="health-dim-fill" style="width: ${((bk.budget_health || 25)/30)*100}%;"></div></div>
+                    </div>
+                    <div class="health-dim-item">
+                        <div class="health-dim-top">
+                            <span>Activity Density</span>
+                            <span>${bk.activity_load || 20}/25</span>
+                        </div>
+                        <div class="health-dim-track"><div class="health-dim-fill" style="width: ${((bk.activity_load || 20)/25)*100}%;"></div></div>
+                    </div>
+                    <div class="health-dim-item">
+                        <div class="health-dim-top">
+                            <span>City Dwell Pacing</span>
+                            <span>${bk.city_pacing || 18}/20</span>
+                        </div>
+                        <div class="health-dim-track"><div class="health-dim-fill" style="width: ${((bk.city_pacing || 18)/20)*100}%;"></div></div>
+                    </div>
+                    <div class="health-dim-item">
+                        <div class="health-dim-top">
+                            <span>Hotel Coverage</span>
+                            <span>${bk.hotel_coverage || 10}/15</span>
+                        </div>
+                        <div class="health-dim-track"><div class="health-dim-fill" style="width: ${((bk.hotel_coverage || 10)/15)*100}%;"></div></div>
+                    </div>
+                    <div class="health-dim-item">
+                        <div class="health-dim-top">
+                            <span>Completeness</span>
+                            <span>${bk.completeness || 8}/10</span>
+                        </div>
+                        <div class="health-dim-track"><div class="health-dim-fill" style="width: ${((bk.completeness || 8)/10)*100}%;"></div></div>
+                    </div>
+                </div>
+
+                ${(health.actionable_recommendations && health.actionable_recommendations.length > 0) ? `
+                    <div class="health-recs-box">
+                        ${health.actionable_recommendations.map(rec => `
+                            <div class="health-rec-item">
+                                <div class="health-rec-text">
+                                    <i class="fa-solid fa-lightbulb" style="margin-right: 0.4rem;"></i>
+                                    ${escapeHtml(rec.message)}
+                                </div>
+                                ${rec.action === 'find_hotels' ? `
+                                    <button class="btn btn-outline btn-sm" onclick="switchItineraryView('builder')">Browse Hotels</button>
+                                ` : (rec.action === 'balance_activities' ? `
+                                    <button class="btn btn-accent btn-sm" onclick="handleAcceptBalancing(${trip.id})">⚡ Balance</button>
+                                ` : '')}
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    // 2. Smart Itinerary Balancing Assistant Card
+    if (balancing && balancing.length > 0) {
+        html += `
+            <div class="balancing-assistant-card">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <div class="balancing-icon"><i class="fa-solid fa-scale-balanced"></i></div>
+                    <div class="balancing-content">
+                        <h4>Smart Itinerary Balancing Assistant</h4>
+                        <p>${escapeHtml(balancing[0].reason)}</p>
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-glow" onclick="handleAcceptBalancing(${trip.id})">
+                    <i class="fa-solid fa-bolt"></i> <span>Accept Suggestion</span>
+                </button>
+            </div>
+        `;
+    }
+
+    html += `
         <!-- Multi-City Stops Rail -->
         <div class="stops-rail-container">
             <div class="stops-rail-header">
@@ -721,7 +890,7 @@ function renderBuilderScheduleView(trip) {
                                         <img src="${hb.hotel_image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=400&q=80'}" class="stop-hotel-thumb" alt="${escapeHtml(hb.hotel_name)}">
                                         <div class="stop-hotel-info">
                                             <h4>
-                                                <i class="fa-solid fa-hotel" style="color: var(--primary);"></i>
+                                                 <i class="fa-solid fa-hotel" style="color: var(--primary);"></i>
                                                 ${escapeHtml(hb.hotel_name)}
                                                 <span class="hotel-category-badge" style="position:static; margin-left: 0.4rem; padding: 0.15rem 0.5rem;">${escapeHtml((hb.hotel_category || 'hotel').replace('_', '-'))}</span>
                                             </h4>
@@ -766,13 +935,12 @@ function renderBuilderScheduleView(trip) {
 
         <!-- Day-Wise Schedule Blocks -->
         <div class="section-header">
-            <h2 class="section-title"><i class="fa-solid fa-calendar-check" style="color: var(--primary);"></i> Day-Wise Schedule &amp; Activities</h2>
+            <h2 class="section-title"><i class="fa-solid fa-calendar-check" style="color: var(--primary);"></i> Day-Wise Schedule &amp; Activity Sections</h2>
         </div>
     `;
 
     // Generate day blocks
     for (let dayNum = 1; dayNum <= durationDays; dayNum++) {
-        // Calculate date of dayNum
         let dayDateStr = '';
         try {
             const d = new Date(trip.start_date);
@@ -780,7 +948,6 @@ function renderBuilderScheduleView(trip) {
             dayDateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
         } catch(e) {}
 
-        // Filter activities for this day
         const dayActivities = activities.filter(a => Number(a.day_number) === dayNum);
         const dayCost = dayActivities.reduce((sum, a) => sum + Number(a.estimated_cost || 0), 0);
 
@@ -796,7 +963,7 @@ function renderBuilderScheduleView(trip) {
                             Daily Est: ${formatCurrency(dayCost, trip.currency)}
                         </span>
                         <button class="btn btn-primary btn-sm" onclick="openAddActivityModal(${trip.id}, ${dayNum})">
-                            <i class="fa-solid fa-plus"></i> Add Activity
+                            <i class="fa-solid fa-plus"></i> Add Section
                         </button>
                     </div>
                 </div>
@@ -806,27 +973,34 @@ function renderBuilderScheduleView(trip) {
         if (dayActivities.length === 0) {
             html += `
                 <div style="padding: 1.25rem; text-align: center; color: var(--text-muted); background: var(--bg-main); border-radius: var(--radius-md);">
-                    <span>No activities scheduled for Day ${dayNum}. Click <strong>+ Add Activity</strong> to explore sightseeing, dining, and adventures.</span>
+                    <span>No activities scheduled for Day ${dayNum}. Click <strong>+ Add Section</strong> to add sightseeing, transport, dining, or custom items.</span>
                 </div>
             `;
         } else {
             dayActivities.forEach(act => {
+                const secType = act.section_type || 'activity';
                 html += `
                     <div class="activity-item-card">
                         <div class="act-left-block">
                             <div class="act-time-badge">${escapeHtml(act.scheduled_time || '10:00')}</div>
                             <div class="act-details">
-                                <span class="act-name">${escapeHtml(act.name)}</span>
+                                <div style="display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;">
+                                    <span class="act-name">${escapeHtml(act.name)}</span>
+                                    <span class="section-type-badge ${secType}">${secType}</span>
+                                </div>
                                 <div class="act-meta-tags">
                                     <span class="category-tag ${act.category || 'sightseeing'}">${escapeHtml(act.category || 'sightseeing')}</span>
                                     <span><i class="fa-regular fa-clock"></i> ${act.duration_hours || 2}h</span>
                                     ${act.city_name ? `<span><i class="fa-solid fa-location-dot"></i> ${escapeHtml(act.city_name)}</span>` : ''}
+                                    ${act.location_address ? `<span><i class="fa-solid fa-map-pin"></i> ${escapeHtml(act.location_address)}</span>` : ''}
                                 </div>
                             </div>
                         </div>
                         <div style="display: flex; align-items: center; gap: 1.25rem;">
                             <div class="act-cost-badge">${formatCurrency(act.estimated_cost, trip.currency)}</div>
                             <div style="display: flex; gap: 0.35rem;">
+                                <button class="btn btn-subtle btn-sm" onclick="openMoveActivityModal(${trip.id}, ${act.id}, ${dayNum}, ${durationDays})" title="Move to another Day"><i class="fa-solid fa-arrow-right-arrow-left"></i></button>
+                                <button class="btn btn-subtle btn-sm" onclick="handleDuplicateActivity(${trip.id}, ${act.id})" title="Duplicate"><i class="fa-regular fa-clone"></i></button>
                                 <button class="btn btn-subtle btn-sm" onclick="openEditActivityModal(${trip.id}, ${act.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
                                 <button class="btn btn-danger-outline btn-sm" onclick="handleDeleteActivity(${trip.id}, ${act.id})" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
                             </div>
@@ -1537,24 +1711,29 @@ function filterActivityCat(cat) {
     renderActivitiesCatalog();
 }
 
-// ================= View 7: Admin Analytics =================
+// ================= View 7: Admin Analytics & User Management =================
 async function renderAdminDashboard() {
     const main = document.getElementById('main-content');
-    main.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading platform analytics...</div>`;
+    main.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading platform analytics & users...</div>`;
 
-    const res = await apiRequest('/api/v1/admin/analytics');
-    if (!res.success || !res.analytics) {
+    const [aRes, uRes] = await Promise.all([
+        apiRequest('/api/v1/admin/analytics'),
+        apiRequest('/api/v1/admin/users')
+    ]);
+
+    if (!aRes.success || !aRes.analytics) {
         main.innerHTML = `<div style="padding: 2rem; text-align: center;"><h3>Admin Access Denied</h3></div>`;
         return;
     }
 
-    const a = res.analytics;
+    const a = aRes.analytics;
+    const users = (uRes.success && uRes.users) ? uRes.users : [];
 
     let html = `
         <div class="section-header">
             <div>
-                <h1 style="font-size: 2rem;">GlobeTrotter Admin &amp; Analytics</h1>
-                <p style="color: var(--text-muted);">Real-time platform adoption, trip statistics, and destination demand.</p>
+                <h1 style="font-size: 2rem;"><i class="fa-solid fa-chart-line" style="color: var(--primary);"></i> Platform Intelligence &amp; Analytics</h1>
+                <p style="color: var(--text-muted);">Real-time adoption metrics, demand leaderboard, and traveler management.</p>
             </div>
         </div>
 
@@ -1569,7 +1748,7 @@ async function renderAdminDashboard() {
             <div class="kpi-card">
                 <div class="kpi-icon-wrap emerald"><i class="fa-solid fa-map"></i></div>
                 <div class="kpi-data">
-                    <span class="kpi-label">Total Itineraries Created</span>
+                    <span class="kpi-label">Total Itineraries</span>
                     <span class="kpi-val">${a.total_trips}</span>
                 </div>
             </div>
@@ -1580,10 +1759,17 @@ async function renderAdminDashboard() {
                     <span class="kpi-val">${formatCurrency(a.avg_budget, 'INR')}</span>
                 </div>
             </div>
+            <div class="kpi-card">
+                <div class="kpi-icon-wrap sky"><i class="fa-solid fa-comments"></i></div>
+                <div class="kpi-data">
+                    <span class="kpi-label">Community Stories</span>
+                    <span class="kpi-val">${(a.community && a.community.total_posts) ? a.community.total_posts : 5}</span>
+                </div>
+            </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
-            <div style="background: #fff; border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+            <div class="admin-card">
                 <h3 style="margin-bottom: 1rem;"><i class="fa-solid fa-trophy" style="color: var(--accent);"></i> Top Visited Destinations</h3>
                 <div style="display: flex; flex-direction: column; gap: 0.75rem;">
     `;
@@ -1601,7 +1787,7 @@ async function renderAdminDashboard() {
                 </div>
             </div>
 
-            <div style="background: #fff; border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem;">
+            <div class="admin-card">
                 <h3 style="margin-bottom: 1rem;"><i class="fa-solid fa-chart-pie" style="color: var(--primary);"></i> Travel Style Distribution</h3>
                 <div style="display: flex; flex-direction: column; gap: 0.75rem;">
     `;
@@ -1619,7 +1805,173 @@ async function renderAdminDashboard() {
                 </div>
             </div>
         </div>
+
+        <!-- User Management Table -->
+        <div class="admin-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3><i class="fa-solid fa-user-shield" style="color: var(--primary);"></i> Registered Users &amp; Profiles</h3>
+                <span class="badge-chip primary">${users.length} Users</span>
+            </div>
+            <div style="overflow-x: auto;">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Email</th>
+                            <th>Role</th>
+                            <th>Location</th>
+                            <th>Style</th>
+                            <th>Currency</th>
+                            <th>Trips</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${users.map(u => `
+                            <tr>
+                                <td>
+                                    <div style="display: flex; align-items: center; gap: 0.6rem;">
+                                        <div class="user-avatar" style="width: 32px; height: 32px; font-size: 0.85rem;">${escapeHtml(u.name.charAt(0).toUpperCase())}</div>
+                                        <strong>${escapeHtml(u.name)}</strong>
+                                    </div>
+                                </td>
+                                <td>${escapeHtml(u.email)}</td>
+                                <td><span class="role-badge" style="${u.role === 'admin' ? 'background: #FEE2E2; color: #991B1B;' : ''}">${u.role}</span></td>
+                                <td>${escapeHtml(u.city || '')}${u.country ? `, ${escapeHtml(u.country)}` : '-'}</td>
+                                <td><span class="badge-chip" style="text-transform: capitalize;">${escapeHtml(u.preferred_travel_style || 'balanced')}</span></td>
+                                <td>${escapeHtml(u.preferred_currency || 'INR')}</td>
+                                <td><strong>${u.trips_count || 0}</strong></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     `;
+
+    main.innerHTML = html;
+}
+
+// ================= View 8: Community Hub =================
+let communityFilterContext = {
+    search: '',
+    city: 'all',
+    style: 'all',
+    sort: 'popular'
+};
+
+async function renderCommunityHub(search = '', city = 'all', style = 'all', sort = 'popular') {
+    communityFilterContext.search = search;
+    communityFilterContext.city = city;
+    communityFilterContext.style = style;
+    communityFilterContext.sort = sort;
+
+    const main = document.getElementById('main-content');
+    main.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading community itineraries & stories...</div>`;
+
+    const queryParams = new URLSearchParams();
+    if (search) queryParams.set('q', search);
+    if (city !== 'all') queryParams.set('city', city);
+    if (style !== 'all') queryParams.set('style', style);
+    if (sort) queryParams.set('sort_by', sort);
+
+    const res = await apiRequest(`/api/v1/community/posts?${queryParams.toString()}`);
+    const posts = res.success ? (res.posts || []) : [];
+
+    let html = `
+        <div class="section-header">
+            <div>
+                <h1 style="font-size: 2rem;"><i class="fa-solid fa-users" style="color: var(--primary);"></i> GlobeTrotter Community Hub</h1>
+                <p style="color: var(--text-muted);">Explore real traveler stories, like &amp; save inspirations, and 1-click import itineraries directly into your trip.</p>
+            </div>
+            <button class="btn btn-primary btn-glow" onclick="openCreateCommunityPostModal()">
+                <i class="fa-solid fa-pen-nib"></i> <span>Share Your Experience</span>
+            </button>
+        </div>
+
+        <!-- Community Filter Controls -->
+        <div style="background: #fff; border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 2rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+            <div style="flex: 1; min-width: 240px;">
+                <input type="text" id="comm-search-input" class="form-control" placeholder="Search stories, forts, temples, food..." value="${escapeHtml(search)}" onkeyup="if(event.key==='Enter') renderCommunityHub(this.value, communityFilterContext.city, communityFilterContext.style, communityFilterContext.sort)">
+            </div>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <select id="comm-sort-select" class="form-control" style="width: auto;" onchange="renderCommunityHub(communityFilterContext.search, communityFilterContext.city, communityFilterContext.style, this.value)">
+                    <option value="popular" ${sort === 'popular' ? 'selected' : ''}>🔥 Most Popular</option>
+                    <option value="rating" ${sort === 'rating' ? 'selected' : ''}>⭐ Highest Rated</option>
+                    <option value="newest" ${sort === 'newest' ? 'selected' : ''}>✨ Newest First</option>
+                    <option value="imports" ${sort === 'imports' ? 'selected' : ''}>📥 Most Imported</option>
+                </select>
+                <button class="btn btn-primary btn-sm" onclick="renderCommunityHub(document.getElementById('comm-search-input').value, communityFilterContext.city, communityFilterContext.style, communityFilterContext.sort)">
+                    <i class="fa-solid fa-magnifying-glass"></i> Filter
+                </button>
+            </div>
+        </div>
+    `;
+
+    if (posts.length === 0) {
+        html += `
+            <div style="background: #fff; border: 1px dashed var(--border-color); border-radius: var(--radius-lg); padding: 3.5rem; text-align: center;">
+                <i class="fa-solid fa-compass" style="font-size: 3rem; color: var(--text-light); margin-bottom: 1rem;"></i>
+                <h3>No community stories found</h3>
+                <p style="color: var(--text-muted); margin-bottom: 1.5rem;">Be the first to share your travel journey with the GlobeTrotter community!</p>
+                <button class="btn btn-primary" onclick="openCreateCommunityPostModal()"><i class="fa-solid fa-pen-nib"></i> Share Experience</button>
+            </div>
+        `;
+    } else {
+        html += `<div class="community-grid">`;
+        posts.forEach(post => {
+            const hList = post.highlights || [];
+            html += `
+                <div class="community-post-card">
+                    <div class="community-card-cover">
+                        <img src="${post.cover_image || 'https://images.unsplash.com/photo-1598324789736-4861f89564a0?auto=format&fit=crop&w=800&q=80'}" alt="${escapeHtml(post.title)}" loading="lazy">
+                        <span class="trip-status-tag" style="background: rgba(15, 23, 42, 0.85); color: #FBBF24;">
+                            <i class="fa-solid fa-star"></i> ${post.rating || 5.0}
+                        </span>
+                        <span class="trip-style-tag">${escapeHtml(post.travel_style || 'Adventure')}</span>
+                    </div>
+                    <div class="community-card-body">
+                        <div class="community-author-row">
+                            <img src="${post.author_avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'}" class="community-author-avatar" alt="${escapeHtml(post.author_name)}">
+                            <div>
+                                <div class="community-author-name">${escapeHtml(post.author_name)}</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(post.city_name || 'India')}</div>
+                            </div>
+                        </div>
+
+                        <h3 class="community-post-title" onclick="openCommunityPostDetailModal(${post.id})" style="cursor: pointer;">
+                            ${escapeHtml(post.title)}
+                        </h3>
+                        <p class="community-post-excerpt">${escapeHtml(post.content)}</p>
+
+                        ${hList.length > 0 ? `
+                            <div class="community-highlights-preview">
+                                <h6><i class="fa-solid fa-list-check"></i> Featured Highlights (${hList.length})</h6>
+                                <div>${escapeHtml(hList.slice(0, 2).map(h => h.name).join(' · '))}</div>
+                            </div>
+                        ` : ''}
+
+                        <div class="community-card-footer">
+                            <div class="community-reactions">
+                                <button class="reaction-btn ${post.user_liked ? 'liked' : ''}" onclick="toggleCommunityLike(${post.id})">
+                                    <i class="${post.user_liked ? 'fa-solid' : 'fa-regular'} fa-heart"></i>
+                                    <span id="post-likes-${post.id}">${post.likes_count || 0}</span>
+                                </button>
+                                <button class="reaction-btn ${post.user_saved ? 'saved' : ''}" onclick="toggleCommunitySave(${post.id})">
+                                    <i class="${post.user_saved ? 'fa-solid' : 'fa-regular'} fa-bookmark"></i>
+                                    <span id="post-saves-${post.id}">${post.saves_count || 0}</span>
+                                </button>
+                            </div>
+
+                            <button class="btn btn-primary btn-sm" onclick="open1ClickImportModal(${post.id})">
+                                <i class="fa-solid fa-download"></i> 1-Click Import
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        html += `</div>`;
+    }
 
     main.innerHTML = html;
 }
@@ -1679,57 +2031,128 @@ function openLoginModal() {
 function openSignupModal() {
     openModal(`
         <div class="modal-header">
-            <h2 class="modal-title">Create GlobeTrotter Account</h2>
+            <h2 class="modal-title"><i class="fa-solid fa-user-plus" style="color: var(--primary);"></i> Create GlobeTrotter Account</h2>
             <button class="modal-close-btn" onclick="closeModal()">&times;</button>
         </div>
-        <form onsubmit="event.preventDefault(); handleSignup(
-            document.getElementById('signup-name').value,
-            document.getElementById('signup-email').value,
-            document.getElementById('signup-pass').value,
-            document.getElementById('signup-curr').value,
-            document.getElementById('signup-style').value
-        );">
+        <form onsubmit="event.preventDefault(); handleSignupSubmit();">
             <div class="modal-body">
-                <div class="form-group">
-                    <label class="form-label">Full Name</label>
-                    <input type="text" id="signup-name" class="form-control" required placeholder="e.g. Rohan Sharma">
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">First Name *</label>
+                        <input type="text" id="signup-first-name" class="form-control" required placeholder="e.g. Rohan">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Last Name</label>
+                        <input type="text" id="signup-last-name" class="form-control" placeholder="e.g. Sharma">
+                    </div>
+                </div>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">Email Address *</label>
+                        <input type="email" id="signup-email" class="form-control" required placeholder="rohan@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Phone Number</label>
+                        <input type="tel" id="signup-phone" class="form-control" placeholder="+91 98765 43210">
+                    </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Email Address</label>
-                    <input type="email" id="signup-email" class="form-control" required placeholder="rohan@example.com">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Password (min 6 chars)</label>
+                    <label class="form-label">Password (min 6 chars) *</label>
                     <input type="password" id="signup-pass" class="form-control" minlength="6" required placeholder="••••••••">
+                </div>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">City</label>
+                        <input type="text" id="signup-city" class="form-control" placeholder="e.g. Mumbai">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Country</label>
+                        <input type="text" id="signup-country" class="form-control" placeholder="e.g. India">
+                    </div>
                 </div>
                 <div class="form-row-2">
                     <div class="form-group">
                         <label class="form-label">Preferred Currency</label>
                         <select id="signup-curr" class="form-control">
-                            <option value="INR">₹ INR (Indian Rupee)</option>
+                            <option value="INR" selected>₹ INR (Indian Rupee)</option>
                             <option value="USD">$ USD (US Dollar)</option>
                             <option value="EUR">€ EUR (Euro)</option>
                             <option value="GBP">£ GBP (British Pound)</option>
+                            <option value="AED">AED (UAE Dirham)</option>
+                            <option value="SGD">S$ (Singapore Dollar)</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Travel Style</label>
+                        <label class="form-label">Primary Travel Style</label>
                         <select id="signup-style" class="form-control">
-                            <option value="balanced">Balanced</option>
-                            <option value="budget">Budget</option>
-                            <option value="luxury">Luxury</option>
-                            <option value="adventure">Adventure</option>
-                            <option value="relaxed">Relaxed</option>
+                            <option value="balanced" selected>Balanced Explorer</option>
+                            <option value="budget">Budget Backpacker</option>
+                            <option value="luxury">Luxury &amp; Comfort</option>
+                            <option value="adventure">Active Adventure</option>
+                            <option value="relaxed">Relaxed &amp; Slow Travel</option>
+                            <option value="family">Family Friendly</option>
+                            <option value="solo">Solo Wanderer</option>
+                            <option value="business">Business &amp; Bleisure</option>
                         </select>
                     </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Profile Photo URL</label>
+                    <input type="url" id="signup-avatar" class="form-control" placeholder="https://images.unsplash.com/photo-...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Travel Bio / Additional Notes</label>
+                    <textarea id="signup-info" class="form-control" rows="2" placeholder="Passions, favorite destinations, bucket lists..."></textarea>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline" onclick="openLoginModal()">Already have an account?</button>
-                <button type="submit" class="btn btn-primary">Create Account</button>
+                <button type="submit" class="btn btn-primary btn-glow">Create Account</button>
             </div>
         </form>
     `);
+}
+
+async function handleSignupSubmit() {
+    const firstName = document.getElementById('signup-first-name').value.trim();
+    const lastName = document.getElementById('signup-last-name').value.trim();
+    const fullName = `${firstName} ${lastName}`.trim();
+    const email = document.getElementById('signup-email').value.trim();
+    const phone = document.getElementById('signup-phone').value.trim();
+    const pass = document.getElementById('signup-pass').value;
+    const city = document.getElementById('signup-city').value.trim();
+    const country = document.getElementById('signup-country').value.trim();
+    const currency = document.getElementById('signup-curr').value;
+    const style = document.getElementById('signup-style').value;
+    const avatar = document.getElementById('signup-avatar').value.trim();
+    const info = document.getElementById('signup-info').value.trim();
+
+    const res = await apiRequest('/api/v1/auth/signup', 'POST', {
+        name: fullName,
+        first_name: firstName,
+        last_name: lastName,
+        email: email,
+        password: pass,
+        phone: phone,
+        city: city,
+        country: country,
+        preferred_currency: currency,
+        preferred_travel_style: style,
+        avatar_url: avatar,
+        additional_info: info
+    });
+
+    if (res.success) {
+        state.token = res.token;
+        state.user = res.user;
+        localStorage.setItem('gt_token', res.token);
+        closeModal();
+        renderAuthNav();
+        showToast(`Welcome to GlobeTrotter, ${state.user.name}!`);
+        navigateTo('dashboard');
+    } else {
+        showToast(res.error || 'Registration failed', 'error');
+    }
 }
 
 // 3. Create Trip Modal
@@ -1936,7 +2359,7 @@ async function handleAddStopSubmit(tripId) {
     }
 }
 
-// 5. Add Activity Modal (with curated catalog browser)
+// 5. Add Activity & Section Modal (with curated catalog browser)
 async function openAddActivityModal(tripId, defaultDay = 1) {
     const trip = state.currentTrip;
     const stops = trip ? trip.stops || [] : [];
@@ -1964,22 +2387,36 @@ async function openAddActivityModal(tripId, defaultDay = 1) {
 
     openModal(`
         <div class="modal-header">
-            <h2 class="modal-title"><i class="fa-solid fa-ticket" style="color: var(--primary);"></i> Schedule Activity to Day ${defaultDay}</h2>
+            <h2 class="modal-title"><i class="fa-solid fa-layer-group" style="color: var(--primary);"></i> Add Section to Day ${defaultDay}</h2>
             <button class="modal-close-btn" onclick="closeModal()">&times;</button>
         </div>
         <form onsubmit="event.preventDefault(); handleAddActivitySubmit(${tripId});">
             <div class="modal-body">
                 <div style="margin-bottom: 1.25rem;">
                     <label class="form-label">Pick from Curated Experiences Catalog</label>
-                    <div style="max-height: 180px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.5rem;">
+                    <div style="max-height: 150px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.5rem;">
                         ${actCards}
                     </div>
                 </div>
 
                 <div style="border-top: 1px solid var(--border-color); padding-top: 1rem;">
-                    <div class="form-group">
-                        <label class="form-label">Activity Title *</label>
-                        <input type="text" id="act-name" class="form-control" required placeholder="e.g. Amber Palace Sunset Tour">
+                    <div class="form-row-2">
+                        <div class="form-group">
+                            <label class="form-label">Section / Activity Title *</label>
+                            <input type="text" id="act-name" class="form-control" required placeholder="e.g. Amber Palace Sunset Tour">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Section Type *</label>
+                            <select id="act-section-type" class="form-control">
+                                <option value="activity" selected>🎯 Activity / Sight</option>
+                                <option value="transport">🚆 Transit / Transport</option>
+                                <option value="hotel">🏨 Hotel / Stay Check-in</option>
+                                <option value="food">🍽️ Food / Dining</option>
+                                <option value="event">🎭 Event / Performance</option>
+                                <option value="free_time">☕ Free Time / Leisure</option>
+                                <option value="custom">✨ Custom Item</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="form-row-2">
                         <div class="form-group">
@@ -1987,7 +2424,7 @@ async function openAddActivityModal(tripId, defaultDay = 1) {
                             <input type="number" id="act-day" class="form-control" required min="1" max="${trip ? trip.duration_days : 30}" value="${defaultDay}">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Time Slot</label>
+                            <label class="form-label">Scheduled Time Slot</label>
                             <input type="text" id="act-time" class="form-control" value="10:00" placeholder="09:30, 14:00...">
                         </div>
                     </div>
@@ -2022,11 +2459,19 @@ async function openAddActivityModal(tripId, defaultDay = 1) {
                             </select>
                         </div>
                     </div>
+                    <div class="form-group">
+                        <label class="form-label">Location / Address</label>
+                        <input type="text" id="act-location" class="form-control" placeholder="e.g. Devisinghpura, Amer, Jaipur, Rajasthan 302001">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Notes &amp; Booking Details</label>
+                        <textarea id="act-notes" class="form-control" rows="2" placeholder="Entry passes, guide details, tickets..."></textarea>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
-                <button type="submit" class="btn btn-primary">Schedule Activity</button>
+                <button type="submit" class="btn btn-primary">Schedule Section</button>
             </div>
         </form>
     `);
@@ -2041,29 +2486,240 @@ function selectCatalogActivity(id, name, cat, dur, cost) {
 
 async function handleAddActivitySubmit(tripId) {
     const name = document.getElementById('act-name').value.trim();
+    const sectionType = document.getElementById('act-section-type').value;
     const dayNumber = parseInt(document.getElementById('act-day').value) || 1;
     const scheduledTime = document.getElementById('act-time').value.trim();
     const category = document.getElementById('act-cat').value;
     const estimatedCost = parseFloat(document.getElementById('act-cost').value) || 0;
     const durationHours = parseFloat(document.getElementById('act-dur').value) || 2.0;
     const stopId = document.getElementById('act-stop').value || null;
+    const locationAddress = document.getElementById('act-location').value.trim();
+    const notes = document.getElementById('act-notes').value.trim();
 
     const res = await apiRequest(`/api/v1/trips/${tripId}/activities`, 'POST', {
         name,
+        section_type: sectionType,
         day_number: dayNumber,
         scheduled_time: scheduledTime,
         category,
         estimated_cost: estimatedCost,
         duration_hours: durationHours,
-        stop_id: stopId
+        stop_id: stopId,
+        location_address: locationAddress,
+        notes: notes
     });
 
     if (res.success) {
         closeModal();
-        showToast('Activity added and budget recalculated!');
+        showToast('Section added and budget recalculated!');
         renderItineraryBuilder();
     } else {
         showToast(res.error || 'Failed to schedule activity', 'error');
+    }
+}
+
+// 5b. Edit Activity & Section Modal
+async function openEditActivityModal(tripId, actId) {
+    const trip = state.currentTrip;
+    if (!trip) return;
+    const act = (trip.activities || []).find(a => a.id === actId);
+    if (!act) {
+        showToast('Activity not found', 'error');
+        return;
+    }
+
+    const stops = trip.stops || [];
+    let stopOptions = stops.map(s => `<option value="${s.id}" ${act.stop_id === s.id ? 'selected' : ''}>${escapeHtml(s.city_name)}</option>`).join('');
+    if (!stopOptions) stopOptions = `<option value="">(No specific stop assigned)</option>`;
+
+    openModal(`
+        <div class="modal-header">
+            <h2 class="modal-title"><i class="fa-solid fa-pen"></i> Edit Section: ${escapeHtml(act.name)}</h2>
+            <button class="modal-close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        <form onsubmit="event.preventDefault(); handleEditActivitySubmit(${tripId}, ${actId});">
+            <div class="modal-body">
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">Title *</label>
+                        <input type="text" id="edit-act-name" class="form-control" required value="${escapeHtml(act.name)}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Section Type</label>
+                        <select id="edit-act-section-type" class="form-control">
+                            <option value="activity" ${act.section_type === 'activity' ? 'selected' : ''}>🎯 Activity / Sight</option>
+                            <option value="transport" ${act.section_type === 'transport' ? 'selected' : ''}>🚆 Transit / Transport</option>
+                            <option value="hotel" ${act.section_type === 'hotel' ? 'selected' : ''}>🏨 Hotel / Stay</option>
+                            <option value="food" ${act.section_type === 'food' ? 'selected' : ''}>🍽️ Food / Dining</option>
+                            <option value="event" ${act.section_type === 'event' ? 'selected' : ''}>🎭 Event / Performance</option>
+                            <option value="free_time" ${act.section_type === 'free_time' ? 'selected' : ''}>☕ Free Time / Leisure</option>
+                            <option value="custom" ${act.section_type === 'custom' ? 'selected' : ''}>✨ Custom Item</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">Day Number</label>
+                        <input type="number" id="edit-act-day" class="form-control" required min="1" max="${trip.duration_days}" value="${act.day_number}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Scheduled Time</label>
+                        <input type="text" id="edit-act-time" class="form-control" value="${escapeHtml(act.scheduled_time || '10:00')}">
+                    </div>
+                </div>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">Category</label>
+                        <select id="edit-act-cat" class="form-control">
+                            <option value="sightseeing" ${act.category === 'sightseeing' ? 'selected' : ''}>Sightseeing</option>
+                            <option value="food" ${act.category === 'food' ? 'selected' : ''}>Food &amp; Dining</option>
+                            <option value="culture" ${act.category === 'culture' ? 'selected' : ''}>Culture &amp; History</option>
+                            <option value="adventure" ${act.category === 'adventure' ? 'selected' : ''}>Adventure</option>
+                            <option value="nature" ${act.category === 'nature' ? 'selected' : ''}>Nature</option>
+                            <option value="relaxation" ${act.category === 'relaxation' ? 'selected' : ''}>Relaxation</option>
+                            <option value="shopping" ${act.category === 'shopping' ? 'selected' : ''}>Shopping</option>
+                            <option value="transport" ${act.category === 'transport' ? 'selected' : ''}>Transit</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Estimated Cost (${trip.currency})</label>
+                        <input type="number" id="edit-act-cost" class="form-control" min="0" value="${act.estimated_cost}">
+                    </div>
+                </div>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">Duration (Hours)</label>
+                        <input type="number" step="0.5" id="edit-act-dur" class="form-control" value="${act.duration_hours}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Associated Stop</label>
+                        <select id="edit-act-stop" class="form-control">
+                            ${stopOptions}
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Location / Address</label>
+                    <input type="text" id="edit-act-location" class="form-control" value="${escapeHtml(act.location_address || '')}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notes &amp; Booking Details</label>
+                    <textarea id="edit-act-notes" class="form-control" rows="2">${escapeHtml(act.notes || '')}</textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+        </form>
+    `);
+}
+
+async function handleEditActivitySubmit(tripId, actId) {
+    const name = document.getElementById('edit-act-name').value.trim();
+    const sectionType = document.getElementById('edit-act-section-type').value;
+    const dayNumber = parseInt(document.getElementById('edit-act-day').value) || 1;
+    const scheduledTime = document.getElementById('edit-act-time').value.trim();
+    const category = document.getElementById('edit-act-cat').value;
+    const estimatedCost = parseFloat(document.getElementById('edit-act-cost').value) || 0;
+    const durationHours = parseFloat(document.getElementById('edit-act-dur').value) || 2.0;
+    const stopId = document.getElementById('edit-act-stop').value || null;
+    const locationAddress = document.getElementById('edit-act-location').value.trim();
+    const notes = document.getElementById('edit-act-notes').value.trim();
+
+    const res = await apiRequest(`/api/v1/trips/${tripId}/activities/${actId}`, 'PUT', {
+        name,
+        section_type: sectionType,
+        day_number: dayNumber,
+        scheduled_time: scheduledTime,
+        category,
+        estimated_cost: estimatedCost,
+        duration_hours: durationHours,
+        stop_id: stopId,
+        location_address: locationAddress,
+        notes: notes
+    });
+
+    if (res.success) {
+        closeModal();
+        showToast('Section updated!');
+        renderItineraryBuilder();
+    } else {
+        showToast(res.error || 'Failed to update section', 'error');
+    }
+}
+
+// 5c. Move Activity to Another Day Modal
+function openMoveActivityModal(tripId, actId, currentDay, maxDays) {
+    let dayOptions = '';
+    for (let d = 1; d <= maxDays; d++) {
+        dayOptions += `<option value="${d}" ${d === currentDay ? 'selected' : ''}>Day ${d}</option>`;
+    }
+
+    openModal(`
+        <div class="modal-header">
+            <h2 class="modal-title"><i class="fa-solid fa-arrow-right-arrow-left"></i> Move Section to Another Day</h2>
+            <button class="modal-close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        <form onsubmit="event.preventDefault(); handleMoveActivityDay(${tripId}, ${actId}, parseInt(document.getElementById('move-target-day').value));">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Select Target Itinerary Day</label>
+                    <select id="move-target-day" class="form-control">
+                        ${dayOptions}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Move Section</button>
+            </div>
+        </form>
+    `);
+}
+
+async function handleMoveActivityDay(tripId, actId, newDay) {
+    const res = await apiRequest(`/api/v1/trips/${tripId}/activities/${actId}/move-day`, 'POST', { day_number: newDay });
+    if (res.success) {
+        closeModal();
+        showToast(`Moved to Day ${newDay}!`);
+        renderItineraryBuilder();
+    } else {
+        showToast(res.error || 'Failed to move section', 'error');
+    }
+}
+
+// 5d. Duplicate Activity Handler
+async function handleDuplicateActivity(tripId, actId, targetDay = null) {
+    const res = await apiRequest(`/api/v1/trips/${tripId}/activities/${actId}/duplicate`, 'POST', { target_day: targetDay });
+    if (res.success) {
+        showToast('Section cloned successfully!');
+        renderItineraryBuilder();
+    } else {
+        showToast(res.error || 'Failed to duplicate section', 'error');
+    }
+}
+
+// 5e. Smart Balancing 1-Click Execution
+async function handleAcceptBalancing(tripId) {
+    const res = await apiRequest(`/api/v1/trips/${tripId}/balance`, 'POST');
+    if (res.success) {
+        showToast(res.message || 'Itinerary schedule rebalanced smoothly across available days!', 'success');
+        renderItineraryBuilder();
+    } else {
+        showToast(res.error || 'Failed to rebalance itinerary', 'error');
+    }
+}
+
+// 5f. Delete Activity Handler
+async function handleDeleteActivity(tripId, actId) {
+    if (!confirm('Are you sure you want to remove this scheduled item?')) return;
+    const res = await apiRequest(`/api/v1/trips/${tripId}/activities/${actId}`, 'DELETE');
+    if (res.success) {
+        showToast('Item removed.');
+        renderItineraryBuilder();
+    } else {
+        showToast(res.error || 'Failed to remove item', 'error');
     }
 }
 
@@ -2364,23 +3020,84 @@ async function handleAddCityToSelectedTrip(cityId) {
     }
 }
 
-// 15. User Profile Modal
+// 15. User Profile Modal with Travel DNA Engine Visualizer
 function openProfileModal() {
     if (!state.user) return;
+    const dna = state.user.travel_dna || {
+        adventure: 50, culture: 65, food: 70, relaxation: 45, sightseeing: 80, nature: 60, shopping: 55,
+        persona_title: 'Balanced Explorer', insights: ['Balanced pacing with diverse cultural stops']
+    };
+
     openModal(`
         <div class="modal-header">
-            <h2 class="modal-title"><i class="fa-solid fa-user-gear" style="color: var(--primary);"></i> Traveler Profile &amp; Preferences</h2>
+            <h2 class="modal-title"><i class="fa-solid fa-user-gear" style="color: var(--primary);"></i> Traveler Profile &amp; Travel DNA</h2>
             <button class="modal-close-btn" onclick="closeModal()">&times;</button>
         </div>
         <form onsubmit="event.preventDefault(); handleUpdateProfile();">
             <div class="modal-body">
-                <div class="form-group">
-                    <label class="form-label">Full Name</label>
-                    <input type="text" id="prof-name" class="form-control" value="${escapeHtml(state.user.name)}">
+                <!-- Travel DNA Visual Summary -->
+                <div class="travel-dna-card" style="margin-bottom: 1.5rem; padding: 1.25rem;">
+                    <div class="travel-dna-header" style="margin-bottom: 0.85rem;">
+                        <div class="travel-dna-title" style="font-size: 1.15rem;">
+                            <i class="fa-solid fa-dna" style="color: #F97316;"></i> Travel DNA
+                        </div>
+                        <span class="persona-badge-glow" style="font-size: 0.75rem;">
+                            ${escapeHtml(dna.persona_title)}
+                        </span>
+                    </div>
+                    <div class="dna-bars-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.5rem; margin: 0.5rem 0;">
+                        <div class="dna-bar-item" style="padding: 0.5rem 0.75rem;">
+                            <div class="dna-bar-header" style="font-size: 0.75rem;"><span>Adventure</span><span>${dna.adventure}%</span></div>
+                            <div class="dna-bar-track"><div class="dna-bar-fill adventure" style="width: ${dna.adventure}%;"></div></div>
+                        </div>
+                        <div class="dna-bar-item" style="padding: 0.5rem 0.75rem;">
+                            <div class="dna-bar-header" style="font-size: 0.75rem;"><span>Culture</span><span>${dna.culture}%</span></div>
+                            <div class="dna-bar-track"><div class="dna-bar-fill culture" style="width: ${dna.culture}%;"></div></div>
+                        </div>
+                        <div class="dna-bar-item" style="padding: 0.5rem 0.75rem;">
+                            <div class="dna-bar-header" style="font-size: 0.75rem;"><span>Food</span><span>${dna.food}%</span></div>
+                            <div class="dna-bar-track"><div class="dna-bar-fill food" style="width: ${dna.food}%;"></div></div>
+                        </div>
+                        <div class="dna-bar-item" style="padding: 0.5rem 0.75rem;">
+                            <div class="dna-bar-header" style="font-size: 0.75rem;"><span>Relaxation</span><span>${dna.relaxation}%</span></div>
+                            <div class="dna-bar-track"><div class="dna-bar-fill relaxation" style="width: ${dna.relaxation}%;"></div></div>
+                        </div>
+                        <div class="dna-bar-item" style="padding: 0.5rem 0.75rem;">
+                            <div class="dna-bar-header" style="font-size: 0.75rem;"><span>Sightseeing</span><span>${dna.sightseeing}%</span></div>
+                            <div class="dna-bar-track"><div class="dna-bar-fill sightseeing" style="width: ${dna.sightseeing}%;"></div></div>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Email Address (Account ID)</label>
-                    <input type="text" class="form-control" readonly value="${escapeHtml(state.user.email)}" disabled>
+
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">First Name</label>
+                        <input type="text" id="prof-first-name" class="form-control" value="${escapeHtml(state.user.first_name || state.user.name.split(' ')[0] || '')}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Last Name</label>
+                        <input type="text" id="prof-last-name" class="form-control" value="${escapeHtml(state.user.last_name || state.user.name.split(' ').slice(1).join(' ') || '')}">
+                    </div>
+                </div>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">Email Address (Read-only)</label>
+                        <input type="text" class="form-control" readonly value="${escapeHtml(state.user.email)}" disabled>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Phone Number</label>
+                        <input type="tel" id="prof-phone" class="form-control" value="${escapeHtml(state.user.phone || '')}">
+                    </div>
+                </div>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">City</label>
+                        <input type="text" id="prof-city" class="form-control" value="${escapeHtml(state.user.city || '')}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Country</label>
+                        <input type="text" id="prof-country" class="form-control" value="${escapeHtml(state.user.country || '')}">
+                    </div>
                 </div>
                 <div class="form-row-2">
                     <div class="form-group">
@@ -2390,51 +3107,571 @@ function openProfileModal() {
                             <option value="USD" ${state.user.preferred_currency === 'USD' ? 'selected' : ''}>$ USD</option>
                             <option value="EUR" ${state.user.preferred_currency === 'EUR' ? 'selected' : ''}>€ EUR</option>
                             <option value="GBP" ${state.user.preferred_currency === 'GBP' ? 'selected' : ''}>£ GBP</option>
+                            <option value="AED" ${state.user.preferred_currency === 'AED' ? 'selected' : ''}>AED</option>
+                            <option value="SGD" ${state.user.preferred_currency === 'SGD' ? 'selected' : ''}>S$ SGD</option>
                         </select>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Travel Style</label>
                         <select id="prof-style" class="form-control">
-                            <option value="balanced" ${state.user.preferred_travel_style === 'balanced' ? 'selected' : ''}>Balanced</option>
-                            <option value="budget" ${state.user.preferred_travel_style === 'budget' ? 'selected' : ''}>Budget</option>
-                            <option value="luxury" ${state.user.preferred_travel_style === 'luxury' ? 'selected' : ''}>Luxury</option>
-                            <option value="adventure" ${state.user.preferred_travel_style === 'adventure' ? 'selected' : ''}>Adventure</option>
-                            <option value="relaxed" ${state.user.preferred_travel_style === 'relaxed' ? 'selected' : ''}>Relaxed</option>
+                            <option value="balanced" ${state.user.preferred_travel_style === 'balanced' ? 'selected' : ''}>Balanced Explorer</option>
+                            <option value="budget" ${state.user.preferred_travel_style === 'budget' ? 'selected' : ''}>Budget Backpacker</option>
+                            <option value="luxury" ${state.user.preferred_travel_style === 'luxury' ? 'selected' : ''}>Luxury &amp; Comfort</option>
+                            <option value="adventure" ${state.user.preferred_travel_style === 'adventure' ? 'selected' : ''}>Active Adventure</option>
+                            <option value="relaxed" ${state.user.preferred_travel_style === 'relaxed' ? 'selected' : ''}>Relaxed &amp; Slow Travel</option>
+                            <option value="family" ${state.user.preferred_travel_style === 'family' ? 'selected' : ''}>Family Friendly</option>
+                            <option value="solo" ${state.user.preferred_travel_style === 'solo' ? 'selected' : ''}>Solo Wanderer</option>
+                            <option value="business" ${state.user.preferred_travel_style === 'business' ? 'selected' : ''}>Business</option>
                         </select>
                     </div>
                 </div>
                 <div class="form-group">
+                    <label class="form-label">Profile Avatar URL</label>
+                    <input type="url" id="prof-avatar" class="form-control" value="${escapeHtml(state.user.avatar_url || '')}">
+                </div>
+                <div class="form-group">
                     <label class="form-label">Bio / Travel Manifesto</label>
-                    <textarea id="prof-bio" class="form-control" rows="2">${escapeHtml(state.user.bio || '')}</textarea>
+                    <textarea id="prof-bio" class="form-control" rows="2">${escapeHtml(state.user.bio || state.user.additional_info || '')}</textarea>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline" onclick="closeModal()">Close</button>
-                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <button type="submit" class="btn btn-primary btn-glow">Save Preferences</button>
             </div>
         </form>
     `);
 }
 
 async function handleUpdateProfile() {
-    const name = document.getElementById('prof-name').value.trim();
+    const firstName = document.getElementById('prof-first-name').value.trim();
+    const lastName = document.getElementById('prof-last-name').value.trim();
+    const fullName = `${firstName} ${lastName}`.trim() || state.user.name;
+    const phone = document.getElementById('prof-phone').value.trim();
+    const city = document.getElementById('prof-city').value.trim();
+    const country = document.getElementById('prof-country').value.trim();
     const curr = document.getElementById('prof-curr').value;
     const style = document.getElementById('prof-style').value;
+    const avatar = document.getElementById('prof-avatar').value.trim();
     const bio = document.getElementById('prof-bio').value.trim();
 
     const res = await apiRequest('/api/v1/auth/profile', 'PUT', {
-        name, preferred_currency: curr, preferred_travel_style: style, bio
+        name: fullName,
+        first_name: firstName,
+        last_name: lastName,
+        phone: phone,
+        city: city,
+        country: country,
+        preferred_currency: curr,
+        preferred_travel_style: style,
+        avatar_url: avatar,
+        bio: bio,
+        additional_info: bio
     });
 
     if (res.success && res.user) {
         state.user = res.user;
         closeModal();
         renderAuthNav();
-        showToast('Profile preferences updated!');
+        showToast('Profile preferences & Travel DNA updated!');
     } else {
         showToast(res.error || 'Failed to update profile', 'error');
     }
 }
+
+// ================= Community Post Modals & Handlers =================
+async function toggleCommunityLike(postId) {
+    if (!state.user) {
+        showToast('Please sign in to like community posts', 'info');
+        openLoginModal();
+        return;
+    }
+
+    const res = await apiRequest(`/api/v1/community/posts/${postId}/interact`, 'POST', { type: 'like' });
+    if (res.success) {
+        const countEl = document.getElementById(`post-likes-${postId}`);
+        if (countEl) countEl.innerText = res.likes_count;
+        const btn = countEl ? countEl.closest('.reaction-btn') : null;
+        if (btn) {
+            btn.classList.toggle('liked', res.active);
+            const icon = btn.querySelector('i');
+            if (icon) {
+                icon.className = res.active ? 'fa-solid fa-heart' : 'fa-regular fa-heart';
+            }
+        }
+        showToast(res.active ? 'Post liked!' : 'Like removed.');
+    }
+}
+
+async function toggleCommunitySave(postId) {
+    if (!state.user) {
+        showToast('Please sign in to bookmark community posts', 'info');
+        openLoginModal();
+        return;
+    }
+
+    const res = await apiRequest(`/api/v1/community/posts/${postId}/interact`, 'POST', { type: 'save' });
+    if (res.success) {
+        const countEl = document.getElementById(`post-saves-${postId}`);
+        if (countEl) countEl.innerText = res.saves_count;
+        const btn = countEl ? countEl.closest('.reaction-btn') : null;
+        if (btn) {
+            btn.classList.toggle('saved', res.active);
+            const icon = btn.querySelector('i');
+            if (icon) {
+                icon.className = res.active ? 'fa-solid fa-bookmark' : 'fa-regular fa-bookmark';
+            }
+        }
+        showToast(res.active ? 'Story saved to your collection!' : 'Removed from saved.');
+    }
+}
+
+async function openCommunityPostDetailModal(postId) {
+    const res = await apiRequest(`/api/v1/community/posts/${postId}`);
+    if (!res.success || !res.post) return;
+    const p = res.post;
+    const highlights = p.highlights || [];
+
+    openModal(`
+        <div class="modal-header">
+            <h2 class="modal-title">${escapeHtml(p.title)}</h2>
+            <button class="modal-close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div style="height: 220px; border-radius: var(--radius-md); overflow: hidden; margin-bottom: 1rem;">
+                <img src="${p.cover_image || 'https://images.unsplash.com/photo-1598324789736-4861f89564a0?auto=format&fit=crop&w=800&q=80'}" style="width: 100%; height: 100%; object-fit: cover;">
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.6rem;">
+                    <img src="${p.author_avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'}" class="community-author-avatar">
+                    <div>
+                        <div style="font-weight: 700;">${escapeHtml(p.author_name)}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(p.city_name || 'India')}</div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <span class="badge-chip accent" style="text-transform: capitalize;">${escapeHtml(p.travel_style || 'Adventure')}</span>
+                    <span class="badge-chip" style="background: #FEF3C7; color: #92400E;"><i class="fa-solid fa-star"></i> ${p.rating || 5.0}/5.0</span>
+                    ${p.estimated_cost ? `<span class="badge-chip success">${formatCurrency(p.estimated_cost, 'INR')}</span>` : ''}
+                </div>
+            </div>
+
+            <div style="font-size: 0.95rem; line-height: 1.6; color: var(--text-main); margin-bottom: 1.5rem; white-space: pre-line;">
+                ${escapeHtml(p.content)}
+            </div>
+
+            ${highlights.length > 0 ? `
+                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.25rem;">
+                    <h4 style="font-size: 0.95rem; color: var(--primary); margin-bottom: 0.75rem;">
+                        <i class="fa-solid fa-list-check"></i> Featured Activity Highlights (${highlights.length})
+                    </h4>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        ${highlights.map(h => `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: #fff; border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-size: 0.85rem;">
+                                <div>
+                                    <strong>${escapeHtml(h.name)}</strong>
+                                    <span class="category-tag ${h.category || 'sightseeing'}" style="margin-left: 0.5rem;">${escapeHtml(h.category || 'sightseeing')}</span>
+                                </div>
+                                <span style="font-weight: 700; color: var(--primary);">${formatCurrency(h.estimated_cost, 'INR')}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal()">Close</button>
+            <button class="btn btn-primary btn-glow" onclick="closeModal(); open1ClickImportModal(${p.id})">
+                <i class="fa-solid fa-download"></i> 1-Click Import to Itinerary
+            </button>
+        </div>
+    `);
+}
+
+// 1-Click Import to Itinerary Modal
+let currentImportPost = null;
+async function open1ClickImportModal(postId) {
+    if (!state.user) {
+        showToast('Please log in to import community itineraries into your account.', 'info');
+        openLoginModal();
+        return;
+    }
+
+    const [pRes, tRes] = await Promise.all([
+        apiRequest(`/api/v1/community/posts/${postId}`),
+        apiRequest('/api/v1/trips')
+    ]);
+
+    if (!pRes.success || !pRes.post) {
+        showToast('Post details not found', 'error');
+        return;
+    }
+
+    const post = pRes.post;
+    currentImportPost = post;
+    const trips = (tRes.success && tRes.trips) ? tRes.trips : [];
+
+    if (trips.length === 0) {
+        showToast('Please create a trip first to import activities.', 'info');
+        openCreateTripModal();
+        return;
+    }
+
+    const tripOptions = trips.map(t => `<option value="${t.id}">${escapeHtml(t.name)} (${t.duration_days} Days)</option>`).join('');
+    const highlights = post.highlights || [];
+
+    openModal(`
+        <div class="modal-header">
+            <h2 class="modal-title"><i class="fa-solid fa-file-import" style="color: var(--primary);"></i> 1-Click Import from "${escapeHtml(post.title)}"</h2>
+            <button class="modal-close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        <form onsubmit="event.preventDefault(); submitCommunityImport(${post.id});">
+            <div class="modal-body">
+                <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+                    Select your destination trip, itinerary day, and check the experiences you'd like to import with estimated expenses.
+                </p>
+
+                <div class="form-group">
+                    <label class="form-label">Destination Trip *</label>
+                    <select id="import-trip-select" class="form-control" onchange="updateImportStopsDropdown(this.value)">
+                        ${tripOptions}
+                    </select>
+                </div>
+
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">Destination Stop / City</label>
+                        <select id="import-stop-select" class="form-control">
+                            <option value="">(Auto-assign stop)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Target Day Number *</label>
+                        <input type="number" id="import-day-number" class="form-control" required min="1" max="30" value="1">
+                    </div>
+                </div>
+
+                <h4 style="font-size: 0.95rem; margin: 1.25rem 0 0.5rem; color: var(--text-main);">
+                    Select Activities to Import (${highlights.length})
+                </h4>
+                <div style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem;">
+                    ${highlights.map((h, idx) => `
+                        <label style="display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.75rem; background: #F8FAFC; border-radius: var(--radius-sm); cursor: pointer;">
+                            <div style="display: flex; align-items: center; gap: 0.6rem;">
+                                <input type="checkbox" class="import-act-checkbox" data-index="${idx}" checked style="width: 17px; height: 17px;">
+                                <div>
+                                    <strong style="font-size: 0.88rem;">${escapeHtml(h.name)}</strong>
+                                    <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(h.category || 'sightseeing')} · ${h.duration_hours || 2}h</div>
+                                </div>
+                            </div>
+                            <span style="font-weight: 700; color: var(--primary); font-size: 0.85rem;">${formatCurrency(h.estimated_cost, 'INR')}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary btn-glow">
+                    <i class="fa-solid fa-download"></i> Confirm &amp; Import to Trip
+                </button>
+            </div>
+        </form>
+    `);
+
+    // populate initial stop dropdown
+    updateImportStopsDropdown(trips[0].id);
+}
+
+async function updateImportStopsDropdown(tripId) {
+    const stopSelect = document.getElementById('import-stop-select');
+    if (!stopSelect) return;
+    const res = await apiRequest(`/api/v1/trips/${tripId}`);
+    if (res.success && res.trip) {
+        const stops = res.trip.stops || [];
+        stopSelect.innerHTML = stops.length > 0 ?
+            stops.map(s => `<option value="${s.id}">${escapeHtml(s.city_name)}</option>`).join('') :
+            `<option value="">(No stops defined yet)</option>`;
+    }
+}
+
+async function submitCommunityImport(postId) {
+    if (!currentImportPost) return;
+    const tripId = parseInt(document.getElementById('import-trip-select').value);
+    const stopId = document.getElementById('import-stop-select').value ? parseInt(document.getElementById('import-stop-select').value) : null;
+    const targetDay = parseInt(document.getElementById('import-day-number').value) || 1;
+
+    const checkboxes = document.querySelectorAll('.import-act-checkbox:checked');
+    const highlights = currentImportPost.highlights || [];
+    const selectedActs = Array.from(checkboxes).map(cb => highlights[parseInt(cb.dataset.index)]).filter(Boolean);
+
+    if (selectedActs.length === 0) {
+        showToast('Please select at least one activity to import', 'error');
+        return;
+    }
+
+    const res = await apiRequest(`/api/v1/community/posts/${postId}/import`, 'POST', {
+        trip_id: tripId,
+        stop_id: stopId,
+        day_number: targetDay,
+        activities: selectedActs
+    });
+
+    if (res.success) {
+        closeModal();
+        showToast(`Successfully imported ${res.imported_count} activities (${formatCurrency(res.imported_cost, 'INR')}) into your itinerary!`, 'success');
+        navigateTo('itinerary', tripId);
+    } else {
+        showToast(res.error || 'Failed to import activities', 'error');
+    }
+}
+
+// Create Community Post Modal
+function openCreateCommunityPostModal() {
+    if (!state.user) {
+        showToast('Please log in to publish your travel stories', 'info');
+        openLoginModal();
+        return;
+    }
+
+    const destinations = state.destinations || [];
+    const cityOptions = destinations.map(d => `<option value="${d.id}">${escapeHtml(d.name)}, ${escapeHtml(d.country)}</option>`).join('');
+
+    openModal(`
+        <div class="modal-header">
+            <h2 class="modal-title"><i class="fa-solid fa-pen-nib" style="color: var(--primary);"></i> Share Your Travel Story</h2>
+            <button class="modal-close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        <form onsubmit="event.preventDefault(); submitCreateCommunityPost();">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Story / Experience Title *</label>
+                    <input type="text" id="post-title" class="form-control" required placeholder="e.g. 48 Hours of Royal Heritage in Jaipur">
+                </div>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">Destination City</label>
+                        <select id="post-city" class="form-control">
+                            ${cityOptions}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Travel Style</label>
+                        <select id="post-style" class="form-control">
+                            <option value="adventure">Adventure</option>
+                            <option value="culture" selected>Culture</option>
+                            <option value="food">Food &amp; Dining</option>
+                            <option value="luxury">Luxury</option>
+                            <option value="budget">Budget</option>
+                            <option value="relaxed">Relaxed</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">Rating (1 to 5 Stars)</label>
+                        <input type="number" step="0.1" id="post-rating" class="form-control" min="1" max="5" value="4.8">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Estimated Total Spend (INR)</label>
+                        <input type="number" id="post-cost" class="form-control" min="0" value="8500">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Cover Photo URL</label>
+                    <input type="url" id="post-cover" class="form-control" value="https://images.unsplash.com/photo-1598324789736-4861f89564a0?auto=format&fit=crop&w=800&q=80">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Your Travel Story &amp; Tips *</label>
+                    <textarea id="post-content" class="form-control" rows="4" required placeholder="Share what made this journey special, key timing tips, where to eat..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tags (comma-separated)</label>
+                    <input type="text" id="post-tags" class="form-control" value="Rajasthan, Heritage, Photography, Palaces">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary btn-glow">Publish to Community</button>
+            </div>
+        </form>
+    `);
+}
+
+async function submitCreateCommunityPost() {
+    const title = document.getElementById('post-title').value.trim();
+    const cityId = document.getElementById('post-city').value;
+    const style = document.getElementById('post-style').value;
+    const rating = parseFloat(document.getElementById('post-rating').value) || 5.0;
+    const cost = parseFloat(document.getElementById('post-cost').value) || 0;
+    const cover = document.getElementById('post-cover').value.trim();
+    const content = document.getElementById('post-content').value.trim();
+    const tags = document.getElementById('post-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+
+    const highlights = [
+        { name: `${title} Highlight Tour`, category: style, estimated_cost: cost * 0.4, duration_hours: 3.0, time: "10:00" },
+        { name: `Traditional Local Tasting in ${style}`, category: 'food', estimated_cost: cost * 0.2, duration_hours: 1.5, time: "13:30" }
+    ];
+
+    const res = await apiRequest('/api/v1/community/posts', 'POST', {
+        title,
+        city_id: cityId ? parseInt(cityId) : null,
+        travel_style: style,
+        rating,
+        estimated_cost: cost,
+        cover_image: cover,
+        content,
+        tags,
+        highlights
+    });
+
+    if (res.success) {
+        closeModal();
+        showToast('Your travel story has been published to the community!', 'success');
+        renderCommunityHub();
+    } else {
+        showToast(res.error || 'Failed to publish story', 'error');
+    }
+}
+
+// ================= Universal Global Search (Ctrl+K) =================
+function openGlobalSearchModal() {
+    openModal(`
+        <div class="search-modal-box">
+            <div class="search-input-header">
+                <i class="fa-solid fa-magnifying-glass" style="color: var(--primary); font-size: 1.25rem;"></i>
+                <input type="text" id="global-search-query" placeholder="Search destinations, activities, stays, trips, and community..." autofocus onkeyup="handleGlobalSearchInput(this.value)">
+                <kbd class="search-kbd">ESC</kbd>
+            </div>
+            <div class="search-results-container" id="global-search-results">
+                <div style="padding: 2rem; text-align: center; color: var(--text-muted);">
+                    <i class="fa-solid fa-compass" style="font-size: 2rem; margin-bottom: 0.5rem; color: var(--primary);"></i>
+                    <div>Type to search instantly across all GlobeTrotter travel resources.</div>
+                </div>
+            </div>
+        </div>
+    `);
+
+    setTimeout(() => {
+        const input = document.getElementById('global-search-query');
+        if (input) input.focus();
+    }, 50);
+}
+
+let searchDebounceTimer = null;
+async function handleGlobalSearchInput(query) {
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(async () => {
+        const container = document.getElementById('global-search-results');
+        if (!container) return;
+
+        if (!query.trim()) {
+            container.innerHTML = `
+                <div style="padding: 2rem; text-align: center; color: var(--text-muted);">
+                    <i class="fa-solid fa-compass" style="font-size: 2rem; margin-bottom: 0.5rem; color: var(--primary);"></i>
+                    <div>Type to search instantly across all GlobeTrotter travel resources.</div>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Searching...</div>`;
+
+        const res = await apiRequest(`/api/v1/search?q=${encodeURIComponent(query.trim())}`);
+        if (!res.success || !res.results) {
+            container.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--text-muted);">No matching results.</div>`;
+            return;
+        }
+
+        const r = res.results;
+        let html = '';
+
+        // 1. Destinations
+        if (r.destinations && r.destinations.length > 0) {
+            html += `
+                <div class="search-category-group">
+                    <div class="search-category-title"><i class="fa-solid fa-map-location-dot"></i> Destinations (${r.destinations.length})</div>
+                    ${r.destinations.map(d => `
+                        <div class="search-result-item" onclick="closeModal(); openDestinationDetailModal(${d.id})">
+                            <div class="search-result-icon" style="background: #EEF2FF; color: #4F46E5;"><i class="fa-solid fa-city"></i></div>
+                            <div>
+                                <strong style="font-size: 0.92rem;">${escapeHtml(d.name)}, ${escapeHtml(d.country)}</strong>
+                                <div style="font-size: 0.78rem; color: var(--text-muted);">${escapeHtml(d.description.substring(0, 70))}...</div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // 2. Activities
+        if (r.activities && r.activities.length > 0) {
+            html += `
+                <div class="search-category-group">
+                    <div class="search-category-title"><i class="fa-solid fa-ticket"></i> Curated Activities (${r.activities.length})</div>
+                    ${r.activities.map(a => `
+                        <div class="search-result-item" onclick="closeModal(); openScheduleCatalogActModal(${a.id})">
+                            <div class="search-result-icon" style="background: #ECFDF5; color: #059669;"><i class="fa-solid fa-ticket"></i></div>
+                            <div>
+                                <strong style="font-size: 0.92rem;">${escapeHtml(a.name)}</strong>
+                                <div style="font-size: 0.78rem; color: var(--text-muted);">${escapeHtml(a.city_name || '')} · ${formatCurrency(a.estimated_cost, 'INR')}</div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // 3. Hotels
+        if (r.hotels && r.hotels.length > 0) {
+            html += `
+                <div class="search-category-group">
+                    <div class="search-category-title"><i class="fa-solid fa-hotel"></i> Recommended Hotels (${r.hotels.length})</div>
+                    ${r.hotels.map(h => `
+                        <div class="search-result-item" onclick="closeModal();">
+                            <div class="search-result-icon" style="background: #FAF5FF; color: #7C3AED;"><i class="fa-solid fa-bed"></i></div>
+                            <div>
+                                <strong style="font-size: 0.92rem;">${escapeHtml(h.name)}</strong>
+                                <div style="font-size: 0.78rem; color: var(--text-muted);">${escapeHtml(h.city_name || '')} · ⭐ ${h.rating} · ${formatCurrency(h.price_per_night, 'INR')}/nt</div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // 4. Community Stories
+        if (r.community && r.community.length > 0) {
+            html += `
+                <div class="search-category-group">
+                    <div class="search-category-title"><i class="fa-solid fa-users"></i> Community Stories (${r.community.length})</div>
+                    ${r.community.map(p => `
+                        <div class="search-result-item" onclick="closeModal(); openCommunityPostDetailModal(${p.id})">
+                            <div class="search-result-icon" style="background: #FFF7ED; color: #C2410C;"><i class="fa-solid fa-book-open"></i></div>
+                            <div>
+                                <strong style="font-size: 0.92rem;">${escapeHtml(p.title)}</strong>
+                                <div style="font-size: 0.78rem; color: var(--text-muted);">By ${escapeHtml(p.author_name || 'Traveler')} · ⭐ ${p.rating}</div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        if (!html) {
+            html = `<div style="padding: 2rem; text-align: center; color: var(--text-muted);">No results found for "${escapeHtml(query)}"</div>`;
+        }
+
+        container.innerHTML = html;
+    }, 200);
+}
+
+// Global Keyboard Shortcut: Ctrl+K or Cmd+K
+window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        openGlobalSearchModal();
+    }
+});
 
 // ================= Hotel Recommendations & Accommodations Management =================
 let hotelSearchContext = {

@@ -34,8 +34,17 @@ class ResUsers(models.Model):
         ('hi', 'Hindi'),
     ], string='Preferred Language', default='en')
 
+    first_name = fields.Char(string='First Name')
+    last_name = fields.Char(string='Last Name')
+    phone = fields.Char(string='Phone Number')
+    city = fields.Char(string='Home City')
+    country = fields.Char(string='Home Country')
+    additional_info = fields.Text(string='Additional Traveler Information')
+
     avatar_url = fields.Char(string='Profile Photo URL')
     bio = fields.Text(string='Traveler Bio')
 
     trip_ids = fields.One2many('globetrotter.trip', 'user_id', string='Trips')
     saved_destination_ids = fields.One2many('globetrotter.saved.destination', 'user_id', string='Saved Destinations')
+    community_post_ids = fields.One2many('globetrotter.community.post', 'user_id', string='Community Posts')
+
