@@ -250,6 +250,189 @@ def compute_trip_business_logic(trip_dict, stops, activities, expenses):
         'budget_intelligence_alerts': alerts
     }
 
+def format_currency_text(amount, currency='INR'):
+    sym = '₹' if currency == 'INR' else ('$' if currency == 'USD' else ('€' if currency == 'EUR' else f"{currency} "))
+    return f"{sym}{amount:,.0f}"
+
+def calculate_hotel_recommendation(hotel, nights=1, rooms=1, guests=2, trip_budget=0.0, remaining_budget=None, travel_style='balanced'):
+    """
+    Calculates 0-100 normalized recommendation score, dynamic category label,
+    budget compatibility flag, and structured 'Why this hotel?' explanation.
+    """
+    price_per_night = float(hotel.get('price_per_night') or 0.0)
+    rating = float(hotel.get('rating') or 4.0)
+    review_count = int(hotel.get('review_count') or 100)
+    category = (hotel.get('hotel_category') or 'mid_range').lower()
+    location_score = float(hotel.get('location_score') or 9.0)
+    cleanliness_score = float(hotel.get('cleanliness_score') or 9.0)
+    service_score = float(hotel.get('service_score') or 9.0)
+    value_score = float(hotel.get('value_score') or 9.0)
+    popularity_score = float(hotel.get('popularity_score') or 80.0)
+    amenities = (hotel.get('amenities') or '').lower()
+    
+    nights = max(1, int(nights or 1))
+    rooms = max(1, int(rooms or 1))
+    stay_cost = price_per_night * nights * rooms
+    
+    # 1. Price Fit (25 pts)
+    price_score = 25.0
+    fits_budget = True
+    budget_impact = "fits"
+    if remaining_budget is not None and remaining_budget > 0:
+        if stay_cost <= remaining_budget:
+            price_score = 25.0
+            fits_budget = True
+            budget_impact = "fits"
+        elif stay_cost <= remaining_budget * 1.25:
+            overrun_ratio = (stay_cost - remaining_budget) / (remaining_budget * 0.25)
+            price_score = max(15.0, 25.0 - (overrun_ratio * 10.0))
+            fits_budget = False
+            budget_impact = "near_limit"
+        else:
+            overrun_ratio = (stay_cost - remaining_budget) / remaining_budget
+            price_score = max(5.0, 15.0 - min(10.0, overrun_ratio * 5.0))
+            fits_budget = False
+            budget_impact = "exceeds"
+    elif trip_budget > 0 and remaining_budget is not None and remaining_budget <= 0:
+        price_score = max(5.0, 18.0 - (stay_cost / 5000.0))
+        fits_budget = False
+        budget_impact = "exceeds"
+    else:
+        price_score = (value_score / 10.0) * 25.0
+
+    # 2. Rating Score (20 pts)
+    rating_score = (min(5.0, max(1.0, rating)) / 5.0) * 20.0
+
+    # 3. Location Score (15 pts)
+    loc_score = (min(10.0, max(1.0, location_score)) / 10.0) * 15.0
+
+    # 4. Travel Style Match (15 pts)
+    style = (travel_style or 'balanced').lower()
+    style_score = 15.0
+    if style == 'budget':
+        if category in ('budget', 'economy'):
+            style_score = 15.0
+        elif category == 'mid_range':
+            style_score = 10.0
+        else:
+            style_score = 5.0
+    elif style == 'luxury':
+        if category in ('luxury', 'premium'):
+            style_score = 15.0
+        elif category == 'mid_range':
+            style_score = 9.0
+        else:
+            style_score = 4.0
+    elif style == 'family':
+        if 'family_rooms' in amenities or 'pool' in amenities:
+            style_score = 15.0
+        elif int(hotel.get('max_guests') or 2) >= 3:
+            style_score = 13.0
+        else:
+            style_score = 9.0
+    elif style == 'relaxed':
+        if 'pool' in amenities or 'spa' in amenities or 'beach' in amenities:
+            style_score = 15.0
+        else:
+            style_score = 10.0
+    elif style == 'adventure':
+        if location_score >= 9.0 and ('parking' in amenities or category in ('budget', 'economy', 'mid_range')):
+            style_score = 15.0
+        else:
+            style_score = 11.0
+    else:
+        style_score = 15.0
+
+    # 5. Amenities Score (10 pts)
+    present_amenities = [a.strip() for a in amenities.split(',') if a.strip()]
+    amenities_score = min(10.0, (len(present_amenities) / 5.0) * 10.0)
+
+    # 6. Popularity Score (5 pts)
+    pop_score = (min(100.0, max(0.0, popularity_score)) / 100.0) * 5.0
+
+    # 7. Value Score (10 pts)
+    val_score = (min(10.0, max(0.0, value_score)) / 10.0) * 10.0
+
+    total_match = min(100, max(10, int(round(price_score + rating_score + loc_score + style_score + amenities_score + pop_score + val_score))))
+
+    if total_match >= 90:
+        match_tier = "Excellent Match"
+    elif total_match >= 78:
+        match_tier = "Great Match"
+    elif total_match >= 65:
+        match_tier = "Good Match"
+    else:
+        match_tier = "Fair Match"
+
+    # Category Labels
+    badges = []
+    if total_match >= 90:
+        badges.append({"label": "🏆 Best Overall", "class": "badge-best-overall"})
+    if category in ('budget', 'economy') and price_score >= 20.0:
+        badges.append({"label": "💰 Best Budget", "class": "badge-best-budget"})
+    if rating >= 4.7:
+        badges.append({"label": "⭐ Best Rated", "class": "badge-best-rated"})
+    if location_score >= 9.4:
+        badges.append({"label": "📍 Best Location", "class": "badge-best-location"})
+    if value_score >= 9.4:
+        badges.append({"label": "✨ Best Value", "class": "badge-best-value"})
+    if category == 'luxury':
+        badges.append({"label": "🏨 Luxury Pick", "class": "badge-luxury"})
+    if 'family_rooms' in amenities or (style == 'family' and 'pool' in amenities):
+        badges.append({"label": "👨‍👩‍👧 Best for Families", "class": "badge-family"})
+    if 'pool' in amenities and 'spa' in amenities:
+        badges.append({"label": "🌿 Best for Relaxed Travel", "class": "badge-relaxed"})
+    if style == 'adventure' and location_score >= 9.0:
+        badges.append({"label": "🎒 Best for Adventure", "class": "badge-adventure"})
+
+    primary_badge = badges[0] if badges else {"label": "✨ Recommended", "class": "badge-top-rec"}
+
+    # "Why this hotel?" data-driven points
+    why_points = []
+    curr = hotel.get('currency', 'INR')
+    if remaining_budget is not None and remaining_budget > 0:
+        if fits_budget:
+            why_points.append(f"Fits within your remaining trip budget ({format_currency_text(remaining_budget, curr)} available).")
+        else:
+            diff = stay_cost - remaining_budget
+            why_points.append(f"Estimated stay ({format_currency_text(stay_cost, curr)}) exceeds remaining budget by {format_currency_text(diff, curr)}.")
+    else:
+        why_points.append(f"Nightly rate of {format_currency_text(price_per_night, curr)} with strong value score ({value_score}/10).")
+
+    why_points.append(f"{rating}/5.0 guest rating with {review_count:,} verified traveler reviews.")
+    
+    if location_score >= 9.0:
+        why_points.append(f"Outstanding location score of {location_score}/10 with easy access to city attractions.")
+    
+    why_points.append(f"Well-suited for your {style.capitalize()} travel style with {category.replace('_', '-').title()} amenities.")
+
+    key_amenities_formatted = []
+    for a in present_amenities[:4]:
+        key_amenities_formatted.append(a.replace('_', ' ').title())
+    if key_amenities_formatted:
+        why_points.append(f"Includes: {', '.join(key_amenities_formatted)}.")
+
+    return {
+        'total_stay_cost': stay_cost,
+        'recommendation_score': total_match,
+        'match_tier': match_tier,
+        'primary_badge': primary_badge,
+        'all_badges': badges,
+        'fits_budget': fits_budget,
+        'budget_impact': budget_impact,
+        'why_points': why_points,
+        'sub_scores': {
+            'price_fit': round(price_score, 1),
+            'rating': round(rating_score, 1),
+            'location': round(loc_score, 1),
+            'style_match': round(style_score, 1),
+            'amenities': round(amenities_score, 1),
+            'popularity': round(pop_score, 1),
+            'value': round(val_score, 1)
+        }
+    }
+
+
 
 class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
 
@@ -391,6 +574,222 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 conn.close()
                 return self._send_json({'success': True, 'activities': [dict(a) for a in acts]})
 
+            # 4b. Hotel Recommendations & Discovery
+            elif path == '/api/v1/hotels/recommendations':
+                city_id = query.get('city_id', [''])[0]
+                city_name = query.get('city', [''])[0].strip()
+                trip_id = query.get('trip_id', [''])[0]
+                check_in = query.get('check_in', [''])[0]
+                check_out = query.get('check_out', [''])[0]
+                guests = int(query.get('guests', ['2'])[0] or 2)
+                rooms = int(query.get('rooms', ['1'])[0] or 1)
+                category = query.get('category', [''])[0]
+                min_rating = float(query.get('min_rating', ['0'])[0] or 0)
+                min_price = float(query.get('min_price', ['0'])[0] or 0)
+                max_price = float(query.get('max_price', ['0'])[0] or 0)
+                req_amenities = query.get('amenities', [''])[0]
+                sort_by = query.get('sort_by', ['recommended'])[0]
+
+                # Calculate nights
+                nights = 1
+                if check_in and check_out:
+                    try:
+                        d_in = datetime.strptime(check_in, '%Y-%m-%d').date()
+                        d_out = datetime.strptime(check_out, '%Y-%m-%d').date()
+                        if d_out > d_in:
+                            nights = (d_out - d_in).days
+                    except Exception:
+                        nights = 1
+
+                # Trip context for budget-aware scoring
+                trip_budget = 0.0
+                remaining_budget = None
+                travel_style = 'balanced'
+                if trip_id:
+                    try:
+                        cur.execute("SELECT * FROM globetrotter_trip WHERE id = %s", (int(trip_id),))
+                        t = cur.fetchone()
+                        if t:
+                            travel_style = t['travel_style'] or 'balanced'
+                            trip_budget = float(t['total_budget'] or 0.0)
+                            cur.execute("SELECT * FROM globetrotter_trip_activity WHERE trip_id = %s", (t['id'],))
+                            acts = cur.fetchall()
+                            cur.execute("SELECT * FROM globetrotter_expense WHERE trip_id = %s", (t['id'],))
+                            exps = cur.fetchall()
+                            cur.execute("SELECT * FROM globetrotter_trip_stop WHERE trip_id = %s", (t['id'],))
+                            stps = cur.fetchall()
+                            comp = compute_trip_business_logic(dict(t), stps, acts, exps)
+                            remaining_budget = comp.get('remaining_budget')
+                    except Exception:
+                        pass
+
+                sql = """
+                    SELECT h.*, c.name as city_name, c.country as country_name 
+                    FROM globetrotter_hotel h 
+                    JOIN globetrotter_city c ON h.city_id = c.id 
+                    WHERE h.active = TRUE
+                """
+                params = []
+                if city_id:
+                    sql += " AND h.city_id = %s"
+                    params.append(int(city_id))
+                elif city_name:
+                    sql += " AND (c.name ILIKE %s OR h.address ILIKE %s)"
+                    params.extend([f"%{city_name}%", f"%{city_name}%"])
+
+                if category and category != 'all':
+                    sql += " AND h.hotel_category = %s"
+                    params.append(category)
+                if min_rating > 0:
+                    sql += " AND h.rating >= %s"
+                    params.append(min_rating)
+                if min_price > 0:
+                    sql += " AND h.price_per_night >= %s"
+                    params.append(min_price)
+                if max_price > 0:
+                    sql += " AND h.price_per_night <= %s"
+                    params.append(max_price)
+
+                cur.execute(sql, params)
+                hotels = [dict(h) for h in cur.fetchall()]
+
+                # Apply amenities filter if present
+                if req_amenities and req_amenities != 'all':
+                    filtered = []
+                    needed = [a.strip().lower() for a in req_amenities.split(',') if a.strip()]
+                    for h in hotels:
+                        h_amen = (h.get('amenities') or '').lower()
+                        if all(a in h_amen for a in needed):
+                            filtered.append(h)
+                    hotels = filtered
+
+                # Compute recommendation score and insights for each hotel
+                scored_hotels = []
+                for h in hotels:
+                    rec_data = calculate_hotel_recommendation(
+                        h, nights=nights, rooms=rooms, guests=guests,
+                        trip_budget=trip_budget, remaining_budget=remaining_budget,
+                        travel_style=travel_style
+                    )
+                    h.update(rec_data)
+                    scored_hotels.append(h)
+
+                # Sort
+                if sort_by == 'price_asc':
+                    scored_hotels.sort(key=lambda x: (x.get('price_per_night', 0), -x.get('recommendation_score', 0)))
+                elif sort_by == 'price_desc':
+                    scored_hotels.sort(key=lambda x: (-x.get('price_per_night', 0), -x.get('recommendation_score', 0)))
+                elif sort_by == 'rating':
+                    scored_hotels.sort(key=lambda x: (-x.get('rating', 0), -x.get('recommendation_score', 0)))
+                elif sort_by == 'value':
+                    scored_hotels.sort(key=lambda x: (-x.get('value_score', 0), -x.get('recommendation_score', 0)))
+                elif sort_by == 'location':
+                    scored_hotels.sort(key=lambda x: (-x.get('location_score', 0), -x.get('recommendation_score', 0)))
+                else: # 'recommended'
+                    scored_hotels.sort(key=lambda x: (-x.get('recommendation_score', 0), -x.get('popularity_score', 0)))
+
+                conn.close()
+                return self._send_json({
+                    'success': True,
+                    'hotels': scored_hotels,
+                    'search_criteria': {
+                        'city_id': city_id,
+                        'city_name': city_name,
+                        'check_in': check_in,
+                        'check_out': check_out,
+                        'nights': nights,
+                        'rooms': rooms,
+                        'guests': guests,
+                        'remaining_budget': remaining_budget,
+                        'travel_style': travel_style
+                    }
+                })
+
+            # 4c. Single Hotel Profile
+            elif path.startswith('/api/v1/hotels/') and not any(sub in path for sub in ['/recommendations', '/compare']):
+                try:
+                    hotel_id = int(path.split('/')[-1])
+                except ValueError:
+                    conn.close()
+                    return self._send_error('Invalid hotel ID')
+
+                cur.execute("""
+                    SELECT h.*, c.name as city_name, c.country as country_name, c.region as city_region
+                    FROM globetrotter_hotel h
+                    JOIN globetrotter_city c ON h.city_id = c.id
+                    WHERE h.id = %s;
+                """, (hotel_id,))
+                hotel = cur.fetchone()
+                if not hotel:
+                    conn.close()
+                    return self._send_error('Hotel not found', status=404)
+
+                h_dict = dict(hotel)
+                rec = calculate_hotel_recommendation(h_dict)
+                h_dict.update(rec)
+                conn.close()
+                return self._send_json({'success': True, 'hotel': h_dict})
+
+            # 4d. Hotel Comparison Matrix
+            elif path == '/api/v1/hotels/compare':
+                ids_str = query.get('ids', [''])[0]
+                if not ids_str:
+                    conn.close()
+                    return self._send_error('No hotel IDs specified for comparison')
+                
+                try:
+                    ids = [int(i.strip()) for i in ids_str.split(',') if i.strip()]
+                except ValueError:
+                    conn.close()
+                    return self._send_error('Invalid hotel IDs')
+
+                if not ids:
+                    conn.close()
+                    return self._send_error('No valid hotel IDs provided')
+
+                nights = int(query.get('nights', ['1'])[0] or 1)
+                rooms = int(query.get('rooms', ['1'])[0] or 1)
+                trip_id = query.get('trip_id', [''])[0]
+
+                trip_budget = 0.0
+                remaining_budget = None
+                travel_style = 'balanced'
+                if trip_id:
+                    try:
+                        cur.execute("SELECT * FROM globetrotter_trip WHERE id = %s", (int(trip_id),))
+                        t = cur.fetchone()
+                        if t:
+                            travel_style = t['travel_style'] or 'balanced'
+                            trip_budget = float(t['total_budget'] or 0.0)
+                            cur.execute("SELECT * FROM globetrotter_trip_activity WHERE trip_id = %s", (t['id'],))
+                            acts = cur.fetchall()
+                            cur.execute("SELECT * FROM globetrotter_expense WHERE trip_id = %s", (t['id'],))
+                            exps = cur.fetchall()
+                            cur.execute("SELECT * FROM globetrotter_trip_stop WHERE trip_id = %s", (t['id'],))
+                            stps = cur.fetchall()
+                            comp = compute_trip_business_logic(dict(t), stps, acts, exps)
+                            remaining_budget = comp.get('remaining_budget')
+                    except Exception:
+                        pass
+
+                cur.execute("""
+                    SELECT h.*, c.name as city_name, c.country as country_name
+                    FROM globetrotter_hotel h
+                    JOIN globetrotter_city c ON h.city_id = c.id
+                    WHERE h.id = ANY(%s);
+                """, (ids,))
+                hotels = [dict(h) for h in cur.fetchall()]
+                for h in hotels:
+                    rec = calculate_hotel_recommendation(
+                        h, nights=nights, rooms=rooms,
+                        trip_budget=trip_budget, remaining_budget=remaining_budget,
+                        travel_style=travel_style
+                    )
+                    h.update(rec)
+
+                conn.close()
+                return self._send_json({'success': True, 'comparison': hotels, 'nights': nights, 'rooms': rooms})
+
             # 5. Trips List
             elif path == '/api/v1/trips':
                 if not user:
@@ -483,10 +882,29 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 """, (trip_id,))
                 expenses = [dict(e) for e in cur.fetchall()]
 
+                # fetch hotel bookings
+                cur.execute("""
+                    SELECT th.*, h.name as hotel_name, h.image as hotel_image, h.rating as hotel_rating,
+                           h.address as hotel_address, h.hotel_category, h.amenities as hotel_amenities,
+                           c.name as city_name, c.country as country_name
+                    FROM globetrotter_trip_hotel th
+                    JOIN globetrotter_hotel h ON th.hotel_id = h.id
+                    LEFT JOIN globetrotter_trip_stop s ON th.stop_id = s.id
+                    LEFT JOIN globetrotter_city c ON s.city_id = c.id
+                    WHERE th.trip_id = %s
+                    ORDER BY th.check_in ASC, th.id ASC;
+                """, (trip_id,))
+                hotels = [dict(h) for h in cur.fetchall()]
+
+                # attach hotel to stop
+                for s in stops:
+                    s['hotel_booking'] = next((h for h in hotels if h.get('stop_id') == s['id']), None)
+
                 computed = compute_trip_business_logic(t_dict, stops, activities, expenses)
                 t_dict.update(computed)
                 t_dict['stops'] = stops
                 t_dict['activities'] = activities
+                t_dict['hotels'] = hotels
                 t_dict['expenses'] = expenses
 
                 conn.close()
@@ -537,6 +955,23 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 cur.execute("SELECT * FROM globetrotter_expense WHERE trip_id = %s ORDER BY date ASC", (trip_id,))
                 expenses = [dict(e) for e in cur.fetchall()]
 
+                # fetch hotel bookings
+                cur.execute("""
+                    SELECT th.*, h.name as hotel_name, h.image as hotel_image, h.rating as hotel_rating,
+                           h.address as hotel_address, h.hotel_category, h.amenities as hotel_amenities,
+                           c.name as city_name, c.country as country_name
+                    FROM globetrotter_trip_hotel th
+                    JOIN globetrotter_hotel h ON th.hotel_id = h.id
+                    LEFT JOIN globetrotter_trip_stop s ON th.stop_id = s.id
+                    LEFT JOIN globetrotter_city c ON s.city_id = c.id
+                    WHERE th.trip_id = %s
+                    ORDER BY th.check_in ASC, th.id ASC;
+                """, (trip_id,))
+                hotels = [dict(h) for h in cur.fetchall()]
+
+                for s in stops:
+                    s['hotel_booking'] = next((h for h in hotels if h.get('stop_id') == s['id']), None)
+
                 computed = compute_trip_business_logic(t_dict, stops, activities, expenses)
                 t_dict.update(computed)
 
@@ -553,9 +988,13 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                     expenses = []
                     for a in activities:
                         a['estimated_cost'] = 0.0
+                    for h in hotels:
+                        h['price_per_night'] = 0.0
+                        h['total_cost'] = 0.0
 
                 t_dict['stops'] = stops
                 t_dict['activities'] = activities
+                t_dict['hotels'] = hotels
                 t_dict['expenses'] = expenses
                 conn.close()
                 return self._send_json({'success': True, 'trip': t_dict})
@@ -847,6 +1286,95 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 conn.close()
                 return self._send_json({'success': True, 'activity_id': act_row['id'], 'message': 'Activity added to itinerary!'})
 
+            # 8b. Add Trip Hotel Booking
+            elif path.startswith('/api/v1/trips/') and path.endswith('/hotels'):
+                if not user:
+                    conn.close()
+                    return self._send_error('Authentication required', status=401)
+
+                trip_id = int(path.split('/')[4])
+                cur.execute("SELECT * FROM globetrotter_trip WHERE id = %s", (trip_id,))
+                trip = cur.fetchone()
+                if not trip or (trip['user_id'] != user['id'] and user.get('role') != 'admin'):
+                    conn.close()
+                    return self._send_error('Unauthorized', status=403)
+
+                hotel_id = body.get('hotel_id')
+                stop_id = body.get('stop_id')
+                check_in = body.get('check_in')
+                check_out = body.get('check_out')
+                guests = int(body.get('number_of_guests') or 2)
+                rooms = int(body.get('number_of_rooms') or 1)
+                room_type = body.get('room_type_selected') or 'Standard Double Room'
+                notes = body.get('notes', '')
+
+                if not hotel_id or not check_in or not check_out:
+                    conn.close()
+                    return self._send_error('Hotel, check-in date, and check-out date are required.')
+
+                cur.execute("SELECT * FROM globetrotter_hotel WHERE id = %s", (int(hotel_id),))
+                hotel = cur.fetchone()
+                if not hotel:
+                    conn.close()
+                    return self._send_error('Hotel not found', status=404)
+
+                try:
+                    d_in = datetime.strptime(check_in, '%Y-%m-%d').date()
+                    d_out = datetime.strptime(check_out, '%Y-%m-%d').date()
+                    if d_out <= d_in:
+                        conn.close()
+                        return self._send_error('Check-out date must be after check-in date.')
+                    nights = (d_out - d_in).days
+                except Exception as e:
+                    conn.close()
+                    return self._send_error('Invalid dates format (YYYY-MM-DD).')
+
+                price_per_night = float(hotel['price_per_night'] or 0.0)
+                total_cost = price_per_night * nights * rooms
+
+                # Check if this stop already has a hotel booking; if so, replace previous linked expense
+                if stop_id:
+                    cur.execute("SELECT * FROM globetrotter_trip_hotel WHERE trip_id = %s AND stop_id = %s", (trip_id, stop_id))
+                    prev_booking = cur.fetchone()
+                    if prev_booking and prev_booking.get('expense_id'):
+                        cur.execute("DELETE FROM globetrotter_expense WHERE id = %s", (prev_booking['expense_id'],))
+                        cur.execute("DELETE FROM globetrotter_trip_hotel WHERE id = %s", (prev_booking['id'],))
+
+                # Create linked accommodation expense
+                exp_name = f"Accommodation: {hotel['name']} ({nights} nights)"
+                cur.execute("""
+                    INSERT INTO globetrotter_expense (trip_id, stop_id, category, name, amount, date, notes)
+                    VALUES (%s, %s, 'accommodation', %s, %s, %s, %s)
+                    RETURNING id;
+                """, (trip_id, stop_id, exp_name, total_cost, check_in, f"Auto-generated for {hotel['name']}"))
+                exp_row = cur.fetchone()
+                exp_id = exp_row['id']
+
+                # Create trip hotel booking
+                cur.execute("""
+                    INSERT INTO globetrotter_trip_hotel (
+                        trip_id, hotel_id, stop_id, expense_id, check_in, check_out,
+                        number_of_nights, number_of_guests, number_of_rooms,
+                        price_per_night, total_cost, room_type_selected, notes, status
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'selected')
+                    RETURNING id;
+                """, (
+                    trip_id, hotel_id, stop_id, exp_id, check_in, check_out,
+                    nights, guests, rooms, price_per_night, total_cost, room_type, notes
+                ))
+                booking_id = cur.fetchone()['id']
+
+                conn.close()
+                return self._send_json({
+                    'success': True,
+                    'booking_id': booking_id,
+                    'expense_id': exp_id,
+                    'total_cost': total_cost,
+                    'nights': nights,
+                    'message': f"Hotel '{hotel['name']}' successfully added to your itinerary!"
+                })
+
             # 9. Add Trip Expense
             elif path.startswith('/api/v1/trips/') and path.endswith('/expenses'):
                 if not user:
@@ -980,6 +1508,23 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                         VALUES (%s, %s, %s, %s, %s, %s, %s);
                     """, (new_trip_id, new_stop_id, e['category'], e['name'], e['amount'], e['date'], e['notes']))
 
+                # Clone hotels
+                cur.execute("SELECT * FROM globetrotter_trip_hotel WHERE trip_id = %s", (src_trip_id,))
+                for h in cur.fetchall():
+                    new_stop_id = stop_map.get(h['stop_id'])
+                    cur.execute("""
+                        INSERT INTO globetrotter_trip_hotel (
+                            trip_id, hotel_id, stop_id, check_in, check_out,
+                            number_of_nights, number_of_guests, number_of_rooms,
+                            price_per_night, total_cost, room_type_selected, notes, status
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                    """, (
+                        new_trip_id, h['hotel_id'], new_stop_id, h['check_in'], h['check_out'],
+                        h['number_of_nights'], h['number_of_guests'], h['number_of_rooms'],
+                        h['price_per_night'], h['total_cost'], h['room_type_selected'], h['notes'], h['status']
+                    ))
+
                 conn.close()
                 return self._send_json({'success': True, 'trip_id': new_trip_id, 'message': 'Itinerary copied into your account!'})
 
@@ -1043,6 +1588,23 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                         INSERT INTO globetrotter_expense (trip_id, stop_id, category, name, amount, date, notes)
                         VALUES (%s, %s, %s, %s, %s, %s, %s);
                     """, (new_trip_id, new_stop_id, e['category'], e['name'], e['amount'], e['date'], e['notes']))
+
+                # Clone hotels
+                cur.execute("SELECT * FROM globetrotter_trip_hotel WHERE trip_id = %s", (src_trip_id,))
+                for h in cur.fetchall():
+                    new_stop_id = stop_map.get(h['stop_id'])
+                    cur.execute("""
+                        INSERT INTO globetrotter_trip_hotel (
+                            trip_id, hotel_id, stop_id, check_in, check_out,
+                            number_of_nights, number_of_guests, number_of_rooms,
+                            price_per_night, total_cost, room_type_selected, notes, status
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                    """, (
+                        new_trip_id, h['hotel_id'], new_stop_id, h['check_in'], h['check_out'],
+                        h['number_of_nights'], h['number_of_guests'], h['number_of_rooms'],
+                        h['price_per_night'], h['total_cost'], h['room_type_selected'], h['notes'], h['status']
+                    ))
 
                 conn.close()
                 return self._send_json({'success': True, 'trip_id': new_trip_id, 'message': 'Trip successfully copied to My Trips!'})
@@ -1126,6 +1688,61 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 conn.close()
                 return self._send_json({'success': True, 'message': 'Trip updated successfully!'})
 
+            # 2b. Update Hotel Booking
+            elif '/hotels/' in path:
+                parts = path.split('/')
+                booking_id = int(parts[-1])
+                cur.execute("""
+                    SELECT th.*, h.name as hotel_name, h.price_per_night as base_price, t.user_id 
+                    FROM globetrotter_trip_hotel th 
+                    JOIN globetrotter_trip t ON th.trip_id = t.id 
+                    JOIN globetrotter_hotel h ON th.hotel_id = h.id 
+                    WHERE th.id = %s;
+                """, (booking_id,))
+                booking = cur.fetchone()
+                if not booking or (booking['user_id'] != user['id'] and user.get('role') != 'admin'):
+                    conn.close()
+                    return self._send_error('Unauthorized or booking not found', status=403)
+
+                check_in = body.get('check_in', str(booking['check_in']))
+                check_out = body.get('check_out', str(booking['check_out']))
+                rooms = int(body.get('number_of_rooms') or booking['number_of_rooms'] or 1)
+                guests = int(body.get('number_of_guests') or booking['number_of_guests'] or 2)
+                room_type = body.get('room_type_selected', booking['room_type_selected'])
+                notes = body.get('notes', booking['notes'])
+                status = body.get('status', booking['status'])
+
+                d_in = datetime.strptime(str(check_in), '%Y-%m-%d').date()
+                d_out = datetime.strptime(str(check_out), '%Y-%m-%d').date()
+                if d_out <= d_in:
+                    conn.close()
+                    return self._send_error('Check-out must be after check-in.')
+                nights = (d_out - d_in).days
+
+                price_per_night = float(booking['price_per_night'])
+                total_cost = price_per_night * nights * rooms
+
+                cur.execute("""
+                    UPDATE globetrotter_trip_hotel
+                    SET check_in = %s, check_out = %s, number_of_nights = %s,
+                        number_of_rooms = %s, number_of_guests = %s,
+                        room_type_selected = %s, notes = %s, status = %s,
+                        total_cost = %s
+                    WHERE id = %s;
+                """, (check_in, check_out, nights, rooms, guests, room_type, notes, status, total_cost, booking_id))
+
+                # Update linked expense
+                if booking.get('expense_id'):
+                    exp_name = f"Accommodation: {booking['hotel_name']} ({nights} nights)"
+                    cur.execute("""
+                        UPDATE globetrotter_expense 
+                        SET amount = %s, date = %s, name = %s
+                        WHERE id = %s;
+                    """, (total_cost, check_in, exp_name, booking['expense_id']))
+
+                conn.close()
+                return self._send_json({'success': True, 'total_cost': total_cost, 'nights': nights, 'message': 'Hotel accommodation updated!'})
+
             # 3. Update Activity
             elif '/activities/' in path:
                 parts = path.split('/')
@@ -1182,6 +1799,27 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 cur.execute("DELETE FROM globetrotter_trip_stop WHERE id = %s", (stop_id,))
                 conn.close()
                 return self._send_json({'success': True, 'message': 'Stop deleted.'})
+
+            # 2b. Delete Hotel Booking
+            elif '/hotels/' in path:
+                parts = path.split('/')
+                booking_id = int(parts[-1])
+                cur.execute("""
+                    SELECT th.*, t.user_id 
+                    FROM globetrotter_trip_hotel th 
+                    JOIN globetrotter_trip t ON th.trip_id = t.id 
+                    WHERE th.id = %s;
+                """, (booking_id,))
+                booking = cur.fetchone()
+                if not booking or (booking['user_id'] != user['id'] and user.get('role') != 'admin'):
+                    conn.close()
+                    return self._send_error('Unauthorized or booking not found', status=403)
+
+                if booking.get('expense_id'):
+                    cur.execute("DELETE FROM globetrotter_expense WHERE id = %s", (booking['expense_id'],))
+                cur.execute("DELETE FROM globetrotter_trip_hotel WHERE id = %s", (booking_id,))
+                conn.close()
+                return self._send_json({'success': True, 'message': 'Hotel accommodation removed.'})
 
             # 3. Delete Activity
             elif '/activities/' in path:

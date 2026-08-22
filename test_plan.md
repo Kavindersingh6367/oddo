@@ -24,6 +24,11 @@ The testing strategy validates all core tiers of GlobeTrotter:
 | `TC-08` | Public Sharing | `/api/v1/shared/*` | Secure unguessable token generation and read-only snapshot retrieval. | ✅ PASSED |
 | `TC-09` | 1-Click Trip Clone | `/api/v1/shared/*/copy` | Clones entire itinerary + child stops + activities + expenses into another user account. | ✅ PASSED |
 | `TC-10` | Security & Isolation | Record Rules | User A cannot access, edit, or delete User B's private itinerary (HTTP 403 Forbidden). | ✅ PASSED |
+| `TC-11` | Hotel Catalog & Scoring | `/api/v1/hotels/recommendations` | Curated hotel catalog scored 0-100 across 7 transparent weighted dimensions with badges. | ✅ PASSED |
+| `TC-12` | Budget-Aware Hotel Match | Recommendation Engine | `fits_budget` calculation and dynamic alerts based on live remaining trip budget. | ✅ PASSED |
+| `TC-13` | Side-by-Side Comparison | `/api/v1/hotels/compare` | Multi-property comparative matrix matching price, quality sub-scores, and amenities. | ✅ PASSED |
+| `TC-14` | Automatic Expense Sync | `/api/v1/trips/*/hotels` | Booking a hotel automatically generates linked accommodation expense & updates budget. | ✅ PASSED |
+| `TC-15` | Multi-City Stay Workflow | 3-City Trip | Delhi, Jaipur, and Udaipur stops mapped to distinct hotel stays with clone support. | ✅ PASSED |
 
 ---
 
@@ -35,4 +40,5 @@ Execute the test suite against the live PostgreSQL-backed server:
 python tests/test_globetrotter.py
 ```
 
-Result: `Ran 4 tests in 1.834s — OK (100% Passed)`.
+Result: `Ran 7 tests in 3.837s — OK (100% Passed)`.
+

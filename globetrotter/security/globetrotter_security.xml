@@ -68,5 +68,13 @@
             <field name="domain_force">['|', ('trip_id.user_id', '=', user.id), ('trip_id.is_public', '=', True)]</field>
             <field name="groups" eval="[(4, ref('group_globetrotter_user'))]"/>
         </record>
+
+        <!-- Record Rule: User can only see/modify their own hotel bookings -->
+        <record id="rule_globetrotter_trip_hotel_user" model="ir.rule">
+            <field name="name">GlobeTrotter: User Own Hotel Bookings</field>
+            <field name="model_id" ref="model_globetrotter_trip_hotel"/>
+            <field name="domain_force">['|', ('trip_id.user_id', '=', user.id), ('trip_id.is_public', '=', True)]</field>
+            <field name="groups" eval="[(4, ref('group_globetrotter_user'))]"/>
+        </record>
     </data>
 </odoo>

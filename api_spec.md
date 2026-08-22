@@ -134,3 +134,65 @@ Unauthenticated public read-only itinerary snapshot.
 
 ### `POST /shared/<token>/copy`
 Deep-clones the public shared itinerary into the logged-in caller's account.
+
+---
+
+## 5. Hotel Recommendation & Accommodations Endpoints
+
+### `GET /hotels/recommendations?city_id={id}&trip_id={id}&check_in={date}&check_out={date}&guests={n}&rooms={n}&category={cat}&min_rating={r}&min_price={p}&max_price={p}&amenities={wifi,pool}&sort_by={sort}`
+Searches and scores hotel recommendations with transparent 0–100 matching engine, dynamic badges (`🏆 Best Overall`, `💰 Best Budget`, etc.), budget fit flags, and "Why this hotel?" data-driven explanations.
+* **Response (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "hotels": [
+      {
+        "id": 1,
+        "name": "Pearl Palace Heritage Boutique",
+        "hotel_category": "mid_range",
+        "rating": 4.8,
+        "review_count": 850,
+        "price_per_night": 2900.0,
+        "recommendation_score": 96,
+        "match_tier": "Excellent Match",
+        "primary_badge": { "label": "🏆 Best Overall", "class": "badge-best-overall" },
+        "fits_budget": true,
+        "total_stay_cost": 5800.0,
+        "why_points": [
+          "Fits within your remaining trip budget (₹28,000 available).",
+          "4.8/5.0 guest rating with 850 verified traveler reviews.",
+          "Outstanding location score of 9.5/10 with easy access to city attractions."
+        ]
+      }
+    ]
+  }
+  ```
+
+### `GET /hotels/<id>`
+Retrieves single hotel details, sub-ratings (location, cleanliness, service, value), room types, and amenities.
+
+### `GET /hotels/compare?ids={id1,id2,id3}&trip_id={id}&nights={n}&rooms={n}`
+Returns side-by-side comparison matrix for 2–3 hotels with price rollups and quality sub-scores.
+
+### `POST /trips/<trip_id>/hotels`
+Adds/books a hotel stay for a specific trip stop. Automatically creates a linked `accommodation` expense in `globetrotter_expense` and updates total cost and remaining budget.
+* **Request Body**:
+  ```json
+  {
+    "hotel_id": 1,
+    "stop_id": 4,
+    "check_in": "2026-10-03",
+    "check_out": "2026-10-05",
+    "number_of_guests": 2,
+    "number_of_rooms": 1,
+    "room_type_selected": "Deluxe Heritage Room",
+    "notes": "Late check-in requested"
+  }
+  ```
+
+### `PUT /trips/<trip_id>/hotels/<booking_id>`
+Modifies hotel reservation (dates, rooms, guests, room type) and automatically recalculates total cost and linked accommodation expense.
+
+### `DELETE /trips/<trip_id>/hotels/<booking_id>`
+Removes hotel reservation and deletes linked accommodation expense, restoring trip budget.
+

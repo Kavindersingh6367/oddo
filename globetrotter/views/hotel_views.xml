@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Hotel Tree View -->
+    <record id="view_globetrotter_hotel_tree" model="ir.ui.view">
+        <field name="name">globetrotter.hotel.tree</field>
+        <field name="model">globetrotter.hotel</field>
+        <field name="arch" type="xml">
+            <tree string="Hotels &amp; Accommodations">
+                <field name="name"/>
+                <field name="city_id"/>
+                <field name="hotel_category" widget="badge"/>
+                <field name="rating" widget="progressbar"/>
+                <field name="review_count" string="Reviews"/>
+                <field name="price_per_night" widget="monetary" options="{'currency_field': 'currency'}"/>
+                <field name="location_score" string="Location"/>
+                <field name="value_score" string="Value"/>
+                <field name="popularity_score" widget="progressbar" string="Popularity"/>
+                <field name="currency" invisible="1"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Hotel Form View -->
+    <record id="view_globetrotter_hotel_form" model="ir.ui.view">
+        <field name="name">globetrotter.hotel.form</field>
+        <field name="model">globetrotter.hotel</field>
+        <field name="arch" type="xml">
+            <form string="Hotel Accommodation">
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only" string="Hotel Name"/>
+                        <h1><field name="name" placeholder="e.g. The Royal Jaipur Haveli"/></h1>
+                    </div>
+                    <group>
+                        <group name="location_info" string="Location &amp; Destination">
+                            <field name="city_id"/>
+                            <field name="address"/>
+                            <field name="latitude"/>
+                            <field name="longitude"/>
+                        </group>
+                        <group name="pricing_info" string="Pricing &amp; Classification">
+                            <field name="hotel_category"/>
+                            <field name="price_per_night" widget="monetary" options="{'currency_field': 'currency'}"/>
+                            <field name="currency"/>
+                            <field name="rating"/>
+                            <field name="review_count"/>
+                            <field name="image"/>
+                        </group>
+                    </group>
+                    <group name="amenities_info" string="Amenities &amp; Features">
+                        <field name="amenities"/>
+                        <field name="room_types"/>
+                        <field name="max_guests"/>
+                        <field name="available_rooms"/>
+                        <field name="check_in_time"/>
+                        <field name="check_out_time"/>
+                    </group>
+                    <group name="sub_scores" string="Quality &amp; Recommendation Scores (1-10)">
+                        <group>
+                            <field name="location_score"/>
+                            <field name="cleanliness_score"/>
+                        </group>
+                        <group>
+                            <field name="service_score"/>
+                            <field name="value_score"/>
+                            <field name="popularity_score"/>
+                        </group>
+                    </group>
+                    <group string="Hotel Overview">
+                        <field name="description"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Hotel Action Window -->
+    <record id="action_globetrotter_hotels" model="ir.actions.act_window">
+        <field name="name">Hotels &amp; Accommodations</field>
+        <field name="res_model">globetrotter.hotel</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <menuitem id="menu_globetrotter_hotel_list"
+              name="Hotels &amp; Stays"
+              parent="menu_globetrotter_destinations"
+              action="action_globetrotter_hotels"
+              sequence="2"/>
+</odoo>

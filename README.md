@@ -229,6 +229,35 @@ Activities added to an itinerary automatically contribute to the trip budget.
 
 ---
 
+# 🏨 Hotel Recommendation & Accommodations Engine
+
+GlobeTrotter includes a full-featured, budget-aware **Hotel Recommendation Engine** that automatically matches suitable accommodations for each stop in a multi-city itinerary.
+
+### Key Capabilities:
+* **Multi-City Accommodation Mapping**: Specific hotel discovery and booking per city stop (e.g. Delhi, Jaipur, Udaipur) based on stop arrival and departure dates.
+* **Transparent 0–100 Scoring Algorithm**:
+  * **Price Fit (25%)**: Real-time evaluation against the trip's remaining budget.
+  * **Guest Rating (20%)**: Normalized verified review rating score.
+  * **Location Score (15%)**: Proximity to major landmarks and transit.
+  * **Travel Style Match (15%)**: Fit against traveler persona (`budget`, `luxury`, `family`, `adventure`, `relaxed`, `balanced`).
+  * **Amenities (10%)**: Verification of essential facilities (Wi-Fi, Pool, Breakfast, Spa, AC, Parking).
+  * **Popularity (5%)**: Booking volume and traveler demand index.
+  * **Value for Money (10%)**: Price-to-quality ratio.
+* **Dynamic Recommendation Badges**:
+  * `🏆 Best Overall` (Top scoring match $\ge 90$)
+  * `💰 Best Budget` (High value with rates under ₹3,000)
+  * `⭐ Best Rated` (Guest rating $\ge 4.7$)
+  * `📍 Best Location` (Location index $\ge 9.4$)
+  * `✨ Best Value` (Value score $\ge 9.4$)
+  * `🏨 Luxury Pick` (5-star heritage/palace stays)
+  * `👨‍👩‍👧 Best for Families` (Family suites & amenities)
+  * `🌿 Best for Relaxed Travel` (Pool & spa retreats)
+* **"Why this hotel?" Explainability**: Every hotel card features a breakdown explaining why the property was chosen based on real itinerary and budget data.
+* **Side-by-Side Comparison Matrix**: Compare 2 to 3 hotels across price, amenities, rating sub-scores, and location before selecting.
+* **Seamless Expense & Budget Synchronization**: Adding or editing a hotel automatically syncs the accommodation expense, recalculates the trip's total cost, cost per traveler, and remaining budget without duplication.
+
+---
+
 # 💰 Smart Budget Management
 
 GlobeTrotter automatically calculates trip expenses.

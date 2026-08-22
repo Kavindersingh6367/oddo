@@ -21,6 +21,7 @@ class GlobetrotterTripStop(models.Model):
     notes = fields.Text(string='Stop Notes & Recommendations')
     
     trip_activity_ids = fields.One2many('globetrotter.trip.activity', 'stop_id', string='Stop Activities', copy=True)
+    trip_hotel_ids = fields.One2many('globetrotter.trip.hotel', 'stop_id', string='Stop Hotels', copy=True)
     expense_ids = fields.One2many('globetrotter.expense', 'stop_id', string='Stop Expenses')
 
     @api.depends('arrival_date', 'departure_date')

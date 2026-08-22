@@ -578,6 +578,11 @@ async function renderItineraryBuilder() {
                         <span class="badge-chip success"><i class="fa-solid fa-wallet"></i> Budget: ${formatCurrency(trip.total_budget, trip.currency)}</span>
                         <span class="badge-chip"><i class="fa-solid fa-compass"></i> Style: ${escapeHtml(trip.travel_style || 'Balanced')}</span>
                         <span class="badge-chip score"><i class="fa-solid fa-gauge-high"></i> Balance Score: ${trip.trip_balance_score}/100</span>
+                        ${(trip.hotels && trip.hotels.length > 0) ? `
+                            <span class="badge-chip" style="background: #F5F3FF; color: #6B21A8; border-color: #DDD6FE;">
+                                <i class="fa-solid fa-hotel"></i> ${trip.hotels.length} Hotel${trip.hotels.length > 1 ? 's' : ''} (${formatCurrency(trip.hotels.reduce((s, h) => s + Number(h.total_cost || 0), 0), trip.currency)})
+                            </span>
+                        ` : ''}
                     </div>
                 </div>
                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
@@ -647,7 +652,7 @@ function renderBuilderScheduleView(trip) {
             <div class="stops-rail-header">
                 <div>
                     <h3 style="font-size: 1.15rem;"><i class="fa-solid fa-map-location-dot" style="color: var(--primary);"></i> Multi-City Route Sequence</h3>
-                    <p style="font-size: 0.82rem; color: var(--text-muted);">Reorder stops to optimize travel route.</p>
+                    <p style="font-size: 0.82rem; color: var(--text-muted);">Reorder stops to optimize travel route and manage city accommodations.</p>
                 </div>
                 <button class="btn btn-outline btn-sm" onclick="openAddStopModal(${trip.id})">
                     <i class="fa-solid fa-plus"></i> Add Destination
@@ -665,12 +670,16 @@ function renderBuilderScheduleView(trip) {
         `;
     } else {
         stops.forEach((stop, index) => {
+            const hasHotel = Boolean(stop.hotel_booking);
             html += `
                 <div class="stop-sequence-card">
                     <span class="stop-seq-badge">${index + 1}</span>
                     <div class="stop-city-name">${escapeHtml(stop.city_name)}, ${escapeHtml(stop.country_name)}</div>
                     <div class="stop-dates-text">
                         <i class="fa-regular fa-calendar"></i> ${formatDateRange(stop.arrival_date, stop.departure_date)} (${stop.duration_days}d)
+                    </div>
+                    <div style="font-size: 0.78rem; margin: 0.35rem 0; padding: 0.2rem 0.4rem; background: ${hasHotel ? '#F0FDF4' : '#FAF5FF'}; border-radius: var(--radius-sm); color: ${hasHotel ? '#166534' : '#6B21A8'}; font-weight: 600;">
+                        ${hasHotel ? `<i class="fa-solid fa-hotel"></i> ${escapeHtml(stop.hotel_booking.hotel_name.substring(0, 18))}...` : `<i class="fa-solid fa-bed"></i> No Hotel Booked`}
                     </div>
                     <div class="stop-card-controls">
                         <div style="display: flex; gap: 0.25rem;">
@@ -690,6 +699,70 @@ function renderBuilderScheduleView(trip) {
     html += `
             </div>
         </div>
+
+        <!-- City Accommodations & Hotels Section -->
+        ${stops.length > 0 ? `
+            <div style="margin-bottom: 2rem;">
+                <div class="section-header" style="margin-bottom: 1rem;">
+                    <div>
+                        <h3 style="font-size: 1.2rem; display: flex; align-items: center; gap: 0.5rem;">
+                            <i class="fa-solid fa-hotel" style="color: var(--primary);"></i> Destination Accommodations &amp; Stays
+                        </h3>
+                        <p style="font-size: 0.85rem; color: var(--text-muted);">Smart recommendations tailored to your itinerary dates, group size, and remaining budget.</p>
+                    </div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    ${stops.map(stop => {
+                        if (stop.hotel_booking) {
+                            const hb = stop.hotel_booking;
+                            return `
+                                <div class="stop-accommodation-card">
+                                    <div class="stop-hotel-left">
+                                        <img src="${hb.hotel_image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=400&q=80'}" class="stop-hotel-thumb" alt="${escapeHtml(hb.hotel_name)}">
+                                        <div class="stop-hotel-info">
+                                            <h4>
+                                                <i class="fa-solid fa-hotel" style="color: var(--primary);"></i>
+                                                ${escapeHtml(hb.hotel_name)}
+                                                <span class="hotel-category-badge" style="position:static; margin-left: 0.4rem; padding: 0.15rem 0.5rem;">${escapeHtml((hb.hotel_category || 'hotel').replace('_', '-'))}</span>
+                                            </h4>
+                                            <div class="stop-hotel-meta">
+                                                <span><i class="fa-solid fa-location-dot"></i> ${escapeHtml(stop.city_name)}</span>
+                                                <span><i class="fa-solid fa-star" style="color: #F59E0B;"></i> ${hb.hotel_rating || 4.5}/5.0</span>
+                                                <span><i class="fa-regular fa-calendar"></i> ${hb.number_of_nights} Nights (${formatDateRange(hb.check_in, hb.check_out)})</span>
+                                                <span><i class="fa-solid fa-door-open"></i> ${hb.number_of_rooms || 1} Room · ${hb.number_of_guests || 2} Guests</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="stop-hotel-right">
+                                        <div>
+                                            <div class="stop-hotel-cost">${formatCurrency(hb.total_cost, trip.currency)}</div>
+                                            <div class="stop-hotel-nights">${formatCurrency(hb.price_per_night, trip.currency)} / night</div>
+                                        </div>
+                                        <div style="display: flex; gap: 0.35rem;">
+                                            <button class="btn btn-subtle btn-sm" onclick="openEditHotelModal(${hb.id})" title="Edit Dates/Rooms"><i class="fa-solid fa-pen"></i></button>
+                                            <button class="btn btn-outline btn-sm" onclick="openHotelSearchModal(${stop.id}, ${stop.city_id}, '${escapeHtml(stop.city_name)}', '${stop.arrival_date}', '${stop.departure_date}')" title="Change Hotel">Change</button>
+                                            <button class="btn btn-danger-outline btn-sm" onclick="handleDeleteHotelBooking(${hb.id})" title="Remove Hotel"><i class="fa-regular fa-trash-can"></i></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        } else {
+                            return `
+                                <div class="no-hotel-cta" onclick="openHotelSearchModal(${stop.id}, ${stop.city_id}, '${escapeHtml(stop.city_name)}', '${stop.arrival_date}', '${stop.departure_date}')">
+                                    <div class="no-hotel-cta-text">
+                                        <i class="fa-solid fa-bed"></i>
+                                        <span>No hotel selected for <strong>${escapeHtml(stop.city_name)}</strong> (${formatDateRange(stop.arrival_date, stop.departure_date)}, ${stop.duration_days} nights)</span>
+                                    </div>
+                                    <button class="btn btn-primary btn-sm">
+                                        <i class="fa-solid fa-magnifying-glass"></i> Find Recommended Hotels
+                                    </button>
+                                </div>
+                            `;
+                        }
+                    }).join('')}
+                </div>
+            </div>
+        ` : ''}
 
         <!-- Day-Wise Schedule Blocks -->
         <div class="section-header">
@@ -2363,6 +2436,704 @@ async function handleUpdateProfile() {
     }
 }
 
+// ================= Hotel Recommendations & Accommodations Management =================
+let hotelSearchContext = {
+    stopId: null,
+    cityId: null,
+    cityName: '',
+    checkIn: '',
+    checkOut: '',
+    guests: 2,
+    rooms: 1,
+    category: 'all',
+    minRating: 0,
+    minPrice: 0,
+    maxPrice: 0,
+    amenities: '',
+    sortBy: 'recommended',
+    allHotels: [],
+    compareIds: []
+};
+
+async function openHotelSearchModal(stopId, cityId, cityName, arrivalDate, departureDate) {
+    hotelSearchContext.stopId = stopId;
+    hotelSearchContext.cityId = cityId;
+    hotelSearchContext.cityName = cityName;
+    hotelSearchContext.checkIn = arrivalDate || (state.currentTrip ? state.currentTrip.start_date : '') || new Date().toISOString().split('T')[0];
+    hotelSearchContext.checkOut = departureDate || (state.currentTrip ? state.currentTrip.end_date : '') || new Date().toISOString().split('T')[0];
+    hotelSearchContext.guests = state.currentTrip ? (state.currentTrip.travelers_count || 2) : 2;
+    hotelSearchContext.rooms = Math.max(1, Math.ceil(hotelSearchContext.guests / 2));
+    hotelSearchContext.category = 'all';
+    hotelSearchContext.minRating = 0;
+    hotelSearchContext.minPrice = 0;
+    hotelSearchContext.maxPrice = 0;
+    hotelSearchContext.amenities = '';
+    hotelSearchContext.sortBy = 'recommended';
+    hotelSearchContext.compareIds = [];
+
+    openModal(`
+        <div class="modal-header">
+            <div>
+                <h2 class="modal-title"><i class="fa-solid fa-hotel" style="color: var(--primary);"></i> Hotel Recommendations in ${escapeHtml(cityName)}</h2>
+                <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.2rem;">
+                    Curated stays scored against your itinerary dates, group size, and remaining budget.
+                </div>
+            </div>
+            <button class="modal-close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding-top: 0.5rem;">
+            <!-- Top Search Context Bar -->
+            <div style="background: #FAF5FF; border: 1px solid #E9D5FF; border-radius: var(--radius-md); padding: 0.85rem 1rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem;">
+                <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; font-size: 0.88rem;">
+                    <div>
+                        <span style="font-weight: 600; color: #6B21A8;">Check-in:</span>
+                        <input type="date" id="hotel-search-checkin" class="form-control" style="display: inline-block; width: auto; padding: 0.25rem 0.5rem; font-size: 0.85rem;" value="${hotelSearchContext.checkIn}" onchange="updateHotelSearchDates()">
+                    </div>
+                    <div>
+                        <span style="font-weight: 600; color: #6B21A8;">Check-out:</span>
+                        <input type="date" id="hotel-search-checkout" class="form-control" style="display: inline-block; width: auto; padding: 0.25rem 0.5rem; font-size: 0.85rem;" value="${hotelSearchContext.checkOut}" onchange="updateHotelSearchDates()">
+                    </div>
+                    <div>
+                        <span style="font-weight: 600; color: #6B21A8;">Guests:</span>
+                        <input type="number" id="hotel-search-guests" min="1" max="20" class="form-control" style="display: inline-block; width: 65px; padding: 0.25rem 0.5rem; font-size: 0.85rem;" value="${hotelSearchContext.guests}" onchange="updateHotelSearchDates()">
+                    </div>
+                    <div>
+                        <span style="font-weight: 600; color: #6B21A8;">Rooms:</span>
+                        <input type="number" id="hotel-search-rooms" min="1" max="10" class="form-control" style="display: inline-block; width: 60px; padding: 0.25rem 0.5rem; font-size: 0.85rem;" value="${hotelSearchContext.rooms}" onchange="updateHotelSearchDates()">
+                    </div>
+                </div>
+                <div id="compare-floating-trigger" style="display: none;">
+                    <button class="btn btn-accent btn-sm" onclick="openHotelComparisonModal()">
+                        <i class="fa-solid fa-code-compare"></i> Compare (<span id="compare-count">0</span>) Hotels
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main Layout: Filter Sidebar + Hotel Cards List -->
+            <div class="hotel-search-modal-layout">
+                <!-- Sidebar Filters -->
+                <div class="hotel-filter-sidebar">
+                    <div>
+                        <div class="filter-group-title">Category Tier</div>
+                        <div class="filter-chips-grid">
+                            <button type="button" class="filter-chip active" onclick="setHotelCategoryFilter('all', this)">All</button>
+                            <button type="button" class="filter-chip" onclick="setHotelCategoryFilter('budget', this)">Budget</button>
+                            <button type="button" class="filter-chip" onclick="setHotelCategoryFilter('economy', this)">Economy</button>
+                            <button type="button" class="filter-chip" onclick="setHotelCategoryFilter('mid_range', this)">Mid-Range</button>
+                            <button type="button" class="filter-chip" onclick="setHotelCategoryFilter('premium', this)">Premium</button>
+                            <button type="button" class="filter-chip" onclick="setHotelCategoryFilter('luxury', this)">Luxury</button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="filter-group-title">Guest Rating</div>
+                        <div class="filter-chips-grid">
+                            <button type="button" class="filter-chip active" onclick="setHotelRatingFilter(0, this)">Any</button>
+                            <button type="button" class="filter-chip" onclick="setHotelRatingFilter(4.0, this)">⭐ 4.0+</button>
+                            <button type="button" class="filter-chip" onclick="setHotelRatingFilter(4.5, this)">⭐ 4.5+</button>
+                            <button type="button" class="filter-chip" onclick="setHotelRatingFilter(4.8, this)">⭐ 4.8+</button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="filter-group-title">Price Range / Night</div>
+                        <div class="filter-chips-grid">
+                            <button type="button" class="filter-chip active" onclick="setHotelPriceFilter(0, 0, this)">All</button>
+                            <button type="button" class="filter-chip" onclick="setHotelPriceFilter(0, 3000, this)">&lt; ₹3,000</button>
+                            <button type="button" class="filter-chip" onclick="setHotelPriceFilter(3000, 8000, this)">₹3k - ₹8k</button>
+                            <button type="button" class="filter-chip" onclick="setHotelPriceFilter(8000, 20000, this)">₹8k - ₹20k</button>
+                            <button type="button" class="filter-chip" onclick="setHotelPriceFilter(20000, 0, this)">₹20,000+</button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="filter-group-title">Must-Have Amenities</div>
+                        <label class="filter-checkbox-label">
+                            <input type="checkbox" value="wifi" onchange="toggleHotelAmenityFilter('wifi', this.checked)"> High-Speed Wi-Fi
+                        </label>
+                        <label class="filter-checkbox-label">
+                            <input type="checkbox" value="breakfast" onchange="toggleHotelAmenityFilter('breakfast', this.checked)"> Breakfast Included
+                        </label>
+                        <label class="filter-checkbox-label">
+                            <input type="checkbox" value="pool" onchange="toggleHotelAmenityFilter('pool', this.checked)"> Swimming Pool
+                        </label>
+                        <label class="filter-checkbox-label">
+                            <input type="checkbox" value="spa" onchange="toggleHotelAmenityFilter('spa', this.checked)"> Luxury Spa / Wellness
+                        </label>
+                        <label class="filter-checkbox-label">
+                            <input type="checkbox" value="restaurant" onchange="toggleHotelAmenityFilter('restaurant', this.checked)"> Fine Restaurant / Bar
+                        </label>
+                        <label class="filter-checkbox-label">
+                            <input type="checkbox" value="parking" onchange="toggleHotelAmenityFilter('parking', this.checked)"> Free Parking
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Right Side Results Container -->
+                <div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+                        <span id="hotel-results-count" style="font-size: 0.9rem; font-weight: 700; color: var(--text-muted);">
+                            Loading recommendations...
+                        </span>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Sort By:</label>
+                            <select id="hotel-sort-select" class="form-control" style="width: auto; padding: 0.3rem 0.6rem; font-size: 0.85rem;" onchange="setHotelSort(this.value)">
+                                <option value="recommended">🏆 Recommended Score</option>
+                                <option value="price_asc">Price: Low to High</option>
+                                <option value="price_desc">Price: High to Low</option>
+                                <option value="rating">Guest Rating</option>
+                                <option value="value">Best Value for Money</option>
+                                <option value="location">Best Location Score</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="hotel-cards-container" class="hotel-cards-list">
+                        <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                            <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; color: var(--primary); margin-bottom: 0.75rem;"></i>
+                            <div>Finding best hotel matches for your trip...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `);
+
+    await fetchAndRenderHotelRecommendations();
+}
+
+async function updateHotelSearchDates() {
+    const checkIn = document.getElementById('hotel-search-checkin').value;
+    const checkOut = document.getElementById('hotel-search-checkout').value;
+    const guests = parseInt(document.getElementById('hotel-search-guests').value) || 2;
+    const rooms = parseInt(document.getElementById('hotel-search-rooms').value) || 1;
+
+    hotelSearchContext.checkIn = checkIn;
+    hotelSearchContext.checkOut = checkOut;
+    hotelSearchContext.guests = guests;
+    hotelSearchContext.rooms = rooms;
+
+    await fetchAndRenderHotelRecommendations();
+}
+
+function setHotelCategoryFilter(cat, elem) {
+    hotelSearchContext.category = cat;
+    elem.parentElement.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    elem.classList.add('active');
+    fetchAndRenderHotelRecommendations();
+}
+
+function setHotelRatingFilter(minR, elem) {
+    hotelSearchContext.minRating = minR;
+    elem.parentElement.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    elem.classList.add('active');
+    fetchAndRenderHotelRecommendations();
+}
+
+function setHotelPriceFilter(minP, maxP, elem) {
+    hotelSearchContext.minPrice = minP;
+    hotelSearchContext.maxPrice = maxP;
+    elem.parentElement.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    elem.classList.add('active');
+    fetchAndRenderHotelRecommendations();
+}
+
+function toggleHotelAmenityFilter(amenity, isChecked) {
+    let list = hotelSearchContext.amenities ? hotelSearchContext.amenities.split(',').map(a => a.trim()) : [];
+    if (isChecked) {
+        if (!list.includes(amenity)) list.push(amenity);
+    } else {
+        list = list.filter(a => a !== amenity);
+    }
+    hotelSearchContext.amenities = list.join(',');
+    fetchAndRenderHotelRecommendations();
+}
+
+function setHotelSort(sortBy) {
+    hotelSearchContext.sortBy = sortBy;
+    fetchAndRenderHotelRecommendations();
+}
+
+async function fetchAndRenderHotelRecommendations() {
+    const container = document.getElementById('hotel-cards-container');
+    const countLabel = document.getElementById('hotel-results-count');
+    if (!container) return;
+
+    const tripId = state.currentTrip ? state.currentTrip.id : '';
+    const queryParams = new URLSearchParams({
+        city_id: hotelSearchContext.cityId || '',
+        city: hotelSearchContext.cityName || '',
+        trip_id: tripId,
+        check_in: hotelSearchContext.checkIn,
+        check_out: hotelSearchContext.checkOut,
+        guests: hotelSearchContext.guests,
+        rooms: hotelSearchContext.rooms,
+        category: hotelSearchContext.category,
+        min_rating: hotelSearchContext.minRating,
+        min_price: hotelSearchContext.minPrice,
+        max_price: hotelSearchContext.maxPrice,
+        amenities: hotelSearchContext.amenities,
+        sort_by: hotelSearchContext.sortBy
+    });
+
+    const res = await apiRequest(`/api/v1/hotels/recommendations?${queryParams.toString()}`);
+    if (!res.success) {
+        container.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--danger);">${escapeHtml(res.error || 'Failed to load hotels')}</div>`;
+        return;
+    }
+
+    const hotels = res.hotels || [];
+    hotelSearchContext.allHotels = hotels;
+
+    if (countLabel) {
+        countLabel.textContent = `${hotels.length} Recommended Hotel${hotels.length !== 1 ? 's' : ''} in ${hotelSearchContext.cityName}`;
+    }
+
+    if (hotels.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 3rem; background: #F8FAFC; border: 1px dashed var(--border-color); border-radius: var(--radius-lg);">
+                <i class="fa-solid fa-hotel" style="font-size: 2.5rem; color: var(--text-muted); margin-bottom: 0.75rem;"></i>
+                <h4 style="font-size: 1.1rem; margin-bottom: 0.35rem;">No Hotels Matching Your Active Filters</h4>
+                <p style="font-size: 0.85rem; color: var(--text-muted);">Try adjusting your category, price range, or amenities filters.</p>
+            </div>
+        `;
+        return;
+    }
+
+    const curr = state.currentTrip ? state.currentTrip.currency : 'INR';
+
+    container.innerHTML = hotels.map(hotel => {
+        const isCompared = hotelSearchContext.compareIds.includes(hotel.id);
+        const nights = res.search_criteria ? res.search_criteria.nights : 1;
+        const totalStay = Number(hotel.total_stay_cost) || (Number(hotel.price_per_night) * nights * hotelSearchContext.rooms);
+        const scoreClass = hotel.recommendation_score >= 90 ? 'high' : (hotel.recommendation_score >= 75 ? 'med' : 'fair');
+        const primaryBadge = hotel.primary_badge || { label: "✨ Recommended", class: "badge-top-rec" };
+
+        const amenitiesList = (hotel.amenities || '').split(',').map(a => a.trim()).filter(Boolean);
+
+        return `
+            <div class="hotel-card-item">
+                <div class="hotel-card-photo-wrap">
+                    <img src="${hotel.image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=400&q=80'}" alt="${escapeHtml(hotel.name)}">
+                    <span class="hotel-category-badge">${escapeHtml((hotel.hotel_category || 'hotel').replace('_', '-'))}</span>
+                </div>
+                <div class="hotel-card-main">
+                    <div class="hotel-card-header">
+                        <div>
+                            <span class="hotel-badge-tag ${primaryBadge.class}">${escapeHtml(primaryBadge.label)}</span>
+                            <div class="hotel-card-name">${escapeHtml(hotel.name)}</div>
+                        </div>
+                        <div class="match-score-pill ${scoreClass}" title="Recommendation Score">
+                            <i class="fa-solid fa-gauge-high"></i> ${hotel.recommendation_score}/100
+                        </div>
+                    </div>
+                    <div class="hotel-card-location">
+                        <i class="fa-solid fa-location-dot" style="color: var(--primary);"></i>
+                        ${escapeHtml(hotel.address || hotel.city_name)} &bull; 
+                        <span><i class="fa-solid fa-star" style="color: #F59E0B;"></i> ${hotel.rating}/5.0 (${hotel.review_count || 120} reviews)</span>
+                    </div>
+
+                    ${hotel.fits_budget ? `
+                        <div class="budget-fit-alert fits">
+                            <i class="fa-solid fa-circle-check"></i> Fits within your remaining trip budget
+                        </div>
+                    ` : `
+                        <div class="budget-fit-alert exceeds">
+                            <i class="fa-solid fa-triangle-exclamation"></i> May exceed remaining budget (Consider economy room or style adjustments)
+                        </div>
+                    `}
+
+                    <!-- Why this hotel data-driven box -->
+                    <div class="why-this-hotel-box">
+                        <h5><i class="fa-solid fa-wand-magic-sparkles"></i> Why this hotel matches your plan:</h5>
+                        <ul class="why-this-hotel-list">
+                            ${(hotel.why_points || []).slice(0, 3).map(p => `<li><i class="fa-solid fa-check"></i> <span>${escapeHtml(p)}</span></li>`).join('')}
+                        </ul>
+                    </div>
+
+                    <div class="hotel-amenities-tags">
+                        ${amenitiesList.slice(0, 5).map(a => `<span class="amenity-pill"><i class="fa-solid fa-check" style="font-size:0.65rem;"></i> ${escapeHtml(a.replace('_', ' '))}</span>`).join('')}
+                        ${amenitiesList.length > 5 ? `<span class="amenity-pill">+${amenitiesList.length - 5} more</span>` : ''}
+                    </div>
+                </div>
+
+                <div class="hotel-card-pricing">
+                    <div>
+                        <div class="hotel-price-per-night">${formatCurrency(hotel.price_per_night, curr)}</div>
+                        <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.35rem;">per night</div>
+                        <div class="hotel-stay-total">
+                            <strong>${formatCurrency(totalStay, curr)}</strong> for ${nights} night${nights > 1 ? 's' : ''}, ${hotelSearchContext.rooms} room${hotelSearchContext.rooms > 1 ? 's' : ''}
+                        </div>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        <button class="btn btn-primary btn-sm" style="width: 100%;" onclick="handleConfirmAddHotel(${hotel.id}, ${hotelSearchContext.stopId}, '${hotelSearchContext.checkIn}', '${hotelSearchContext.checkOut}', ${hotelSearchContext.guests}, ${hotelSearchContext.rooms})">
+                            <i class="fa-solid fa-plus"></i> Select &amp; Add Hotel
+                        </button>
+                        <div style="display: flex; gap: 0.35rem;">
+                            <button class="btn btn-outline btn-sm" style="flex: 1;" onclick="openHotelDetailModal(${hotel.id}, ${hotelSearchContext.stopId}, '${hotelSearchContext.checkIn}', '${hotelSearchContext.checkOut}', ${hotelSearchContext.guests}, ${hotelSearchContext.rooms})">
+                                Details
+                            </button>
+                            <button class="btn ${isCompared ? 'btn-accent' : 'btn-subtle'} btn-sm" onclick="toggleHotelCompare(${hotel.id})" title="Compare side by side">
+                                <i class="fa-solid fa-code-compare"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function toggleHotelCompare(hotelId) {
+    const index = hotelSearchContext.compareIds.indexOf(hotelId);
+    if (index >= 0) {
+        hotelSearchContext.compareIds.splice(index, 1);
+    } else {
+        if (hotelSearchContext.compareIds.length >= 3) {
+            showToast('You can compare up to 3 hotels at once.', 'info');
+            return;
+        }
+        hotelSearchContext.compareIds.push(hotelId);
+    }
+
+    const trig = document.getElementById('compare-floating-trigger');
+    const countSpan = document.getElementById('compare-count');
+    if (trig && countSpan) {
+        countSpan.textContent = hotelSearchContext.compareIds.length;
+        trig.style.display = hotelSearchContext.compareIds.length >= 2 ? 'block' : 'none';
+    }
+
+    fetchAndRenderHotelRecommendations();
+}
+
+async function openHotelComparisonModal() {
+    if (hotelSearchContext.compareIds.length < 2) {
+        showToast('Please select at least 2 hotels to compare.', 'info');
+        return;
+    }
+
+    const tripId = state.currentTrip ? state.currentTrip.id : '';
+    const res = await apiRequest(`/api/v1/hotels/compare?ids=${hotelSearchContext.compareIds.join(',')}&trip_id=${tripId}&nights=1&rooms=${hotelSearchContext.rooms}`);
+    if (!res.success || !res.comparison) {
+        showToast(res.error || 'Failed to load comparison', 'error');
+        return;
+    }
+
+    const hotels = res.comparison;
+    const curr = state.currentTrip ? state.currentTrip.currency : 'INR';
+
+    openModal(`
+        <div class="modal-header">
+            <h2 class="modal-title"><i class="fa-solid fa-code-compare" style="color: var(--accent);"></i> Side-by-Side Hotel Comparison</h2>
+            <button class="modal-close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="comparison-table-wrap">
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Feature</th>
+                            ${hotels.map(h => `
+                                <td style="text-align: center; min-width: 220px;">
+                                    <img src="${h.image}" style="width: 100%; height: 110px; object-fit: cover; border-radius: var(--radius-sm); margin-bottom: 0.5rem;">
+                                    <div style="font-weight: 700; font-size: 1.05rem;">${escapeHtml(h.name)}</div>
+                                    <div style="font-size: 0.8rem; color: var(--text-muted);">${escapeHtml(h.city_name)}</div>
+                                </td>
+                            `).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <th>Recommendation Score</th>
+                            ${hotels.map(h => `
+                                <td style="text-align: center; font-weight: 800; font-size: 1.1rem; color: var(--primary);">
+                                    ${h.recommendation_score}/100 <br>
+                                    <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">${h.match_tier}</span>
+                                </td>
+                            `).join('')}
+                        </tr>
+                        <tr>
+                            <th>Price / Night</th>
+                            ${hotels.map(h => `
+                                <td style="text-align: center; font-weight: 700; font-size: 1.1rem;">
+                                    ${formatCurrency(h.price_per_night, curr)}
+                                </td>
+                            `).join('')}
+                        </tr>
+                        <tr>
+                            <th>Category &amp; Rating</th>
+                            ${hotels.map(h => `
+                                <td style="text-align: center;">
+                                    <span class="hotel-category-badge" style="position:static; display:inline-block; margin-bottom: 0.25rem;">${escapeHtml((h.hotel_category || '').replace('_', '-'))}</span>
+                                    <div>⭐ ${h.rating}/5.0 (${h.review_count || 100} reviews)</div>
+                                </td>
+                            `).join('')}
+                        </tr>
+                        <tr>
+                            <th>Quality Sub-Scores</th>
+                            ${hotels.map(h => `
+                                <td style="font-size: 0.82rem; line-height: 1.6;">
+                                    <div>📍 Location: <strong>${h.location_score}/10</strong></div>
+                                    <div>✨ Cleanliness: <strong>${h.cleanliness_score}/10</strong></div>
+                                    <div>🛎️ Service: <strong>${h.service_score}/10</strong></div>
+                                    <div>💎 Value: <strong>${h.value_score}/10</strong></div>
+                                </td>
+                            `).join('')}
+                        </tr>
+                        <tr>
+                            <th>Amenities</th>
+                            ${hotels.map(h => `
+                                <td>
+                                    <div class="hotel-amenities-tags">
+                                        ${(h.amenities || '').split(',').map(a => `<span class="amenity-pill">${escapeHtml(a.trim().replace('_', ' '))}</span>`).join('')}
+                                    </div>
+                                </td>
+                            `).join('')}
+                        </tr>
+                        <tr>
+                            <th>Action</th>
+                            ${hotels.map(h => `
+                                <td style="text-align: center;">
+                                    <button class="btn btn-primary btn-sm" style="width: 100%;" onclick="closeModal(); handleConfirmAddHotel(${h.id}, ${hotelSearchContext.stopId}, '${hotelSearchContext.checkIn}', '${hotelSearchContext.checkOut}', ${hotelSearchContext.guests}, ${hotelSearchContext.rooms})">
+                                        Choose This Hotel
+                                    </button>
+                                </td>
+                            `).join('')}
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal()">Close</button>
+        </div>
+    `);
+}
+
+async function openHotelDetailModal(hotelId, stopId, checkIn, checkOut, guests, rooms) {
+    const res = await apiRequest(`/api/v1/hotels/${hotelId}`);
+    if (!res.success || !res.hotel) {
+        showToast('Failed to load hotel profile', 'error');
+        return;
+    }
+
+    const h = res.hotel;
+    const curr = state.currentTrip ? state.currentTrip.currency : 'INR';
+    const amenitiesList = (h.amenities || '').split(',').map(a => a.trim()).filter(Boolean);
+
+    openModal(`
+        <div class="modal-header">
+            <div>
+                <h2 class="modal-title">${escapeHtml(h.name)}</h2>
+                <div style="font-size: 0.85rem; color: var(--text-muted);">
+                    <i class="fa-solid fa-location-dot" style="color: var(--primary);"></i> ${escapeHtml(h.address || h.city_name)}, ${escapeHtml(h.country_name)}
+                </div>
+            </div>
+            <button class="modal-close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <img src="${h.image}" style="width: 100%; height: 220px; object-fit: cover; border-radius: var(--radius-md); margin-bottom: 1rem;">
+            <p style="color: var(--text-main); line-height: 1.6; margin-bottom: 1rem;">${escapeHtml(h.description)}</p>
+
+            <div class="trip-meta-row" style="margin-bottom: 1.25rem;">
+                <div class="trip-meta-item">⭐ ${h.rating}/5.0 (${h.review_count || 120} reviews)</div>
+                <div class="trip-meta-item">🏷️ ${escapeHtml((h.hotel_category || 'hotel').replace('_', '-').toUpperCase())}</div>
+                <div class="trip-meta-item">💰 ${formatCurrency(h.price_per_night, curr)} / night</div>
+                <div class="trip-meta-item">👥 Up to ${h.max_guests || 2} guests/room</div>
+            </div>
+
+            <!-- Quality Rating Scores -->
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; background: #F8FAFC; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.85rem; text-align: center; margin-bottom: 1.25rem;">
+                <div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">Location</div>
+                    <div style="font-weight: 800; font-size: 1.1rem; color: var(--primary);">${h.location_score}/10</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">Cleanliness</div>
+                    <div style="font-weight: 800; font-size: 1.1rem; color: var(--primary);">${h.cleanliness_score}/10</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">Service</div>
+                    <div style="font-weight: 800; font-size: 1.1rem; color: var(--primary);">${h.service_score}/10</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">Value</div>
+                    <div style="font-weight: 800; font-size: 1.1rem; color: var(--primary);">${h.value_score}/10</div>
+                </div>
+            </div>
+
+            <h4 style="font-size: 0.95rem; margin-bottom: 0.5rem;">Property Amenities</h4>
+            <div class="hotel-amenities-tags" style="margin-bottom: 1.25rem;">
+                ${amenitiesList.map(a => `<span class="amenity-pill"><i class="fa-solid fa-check"></i> ${escapeHtml(a.replace('_', ' '))}</span>`).join('')}
+            </div>
+
+            <!-- Booking Room Config -->
+            <div style="background: #FAF8FF; border: 1.5px solid #E9D5FF; border-radius: var(--radius-md); padding: 1rem;">
+                <h4 style="font-size: 0.95rem; color: #6B21A8; margin-bottom: 0.65rem;"><i class="fa-solid fa-calendar-check"></i> Reserve Accommodation</h4>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">Check-in Date</label>
+                        <input type="date" id="detail-checkin" class="form-control" value="${checkIn}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Check-out Date</label>
+                        <input type="date" id="detail-checkout" class="form-control" value="${checkOut}">
+                    </div>
+                </div>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">Rooms</label>
+                        <input type="number" id="detail-rooms" min="1" max="10" class="form-control" value="${rooms || 1}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Guests</label>
+                        <input type="number" id="detail-guests" min="1" max="20" class="form-control" value="${guests || 2}">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Special Requests / Room Type</label>
+                    <input type="text" id="detail-roomtype" class="form-control" placeholder="e.g. Deluxe King Room with Balcony">
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeModal()">Back</button>
+            <button class="btn btn-primary" onclick="submitDetailedHotelBooking(${h.id}, ${stopId})">
+                Confirm &amp; Add Hotel to Trip
+            </button>
+        </div>
+    `);
+}
+
+async function submitDetailedHotelBooking(hotelId, stopId) {
+    const checkIn = document.getElementById('detail-checkin').value;
+    const checkOut = document.getElementById('detail-checkout').value;
+    const rooms = parseInt(document.getElementById('detail-rooms').value) || 1;
+    const guests = parseInt(document.getElementById('detail-guests').value) || 2;
+    const roomType = document.getElementById('detail-roomtype').value.trim() || 'Standard Double Room';
+
+    await handleConfirmAddHotel(hotelId, stopId, checkIn, checkOut, guests, rooms, roomType);
+}
+
+async function handleConfirmAddHotel(hotelId, stopId, checkIn, checkOut, guests, rooms, roomType = 'Standard Double Room', notes = '') {
+    if (!state.currentTrip) {
+        showToast('Please open a trip first', 'error');
+        return;
+    }
+
+    const tripId = state.currentTrip.id;
+    const res = await apiRequest(`/api/v1/trips/${tripId}/hotels`, 'POST', {
+        hotel_id: hotelId,
+        stop_id: stopId,
+        check_in: checkIn,
+        check_out: checkOut,
+        number_of_guests: guests,
+        number_of_rooms: rooms,
+        room_type_selected: roomType,
+        notes: notes
+    });
+
+    if (res.success) {
+        closeModal();
+        showToast(res.message || 'Hotel accommodation added to your itinerary & budget!', 'success');
+        renderItineraryBuilder();
+    } else {
+        showToast(res.error || 'Failed to book hotel', 'error');
+    }
+}
+
+async function openEditHotelModal(bookingId) {
+    if (!state.currentTrip) return;
+    const hotel = (state.currentTrip.hotels || []).find(h => h.id === bookingId);
+    if (!hotel) {
+        showToast('Booking details not found', 'error');
+        return;
+    }
+
+    openModal(`
+        <div class="modal-header">
+            <h2 class="modal-title"><i class="fa-solid fa-pen"></i> Edit Hotel Stay: ${escapeHtml(hotel.hotel_name)}</h2>
+            <button class="modal-close-btn" onclick="closeModal()">&times;</button>
+        </div>
+        <form onsubmit="event.preventDefault(); handleConfirmEditHotel(${bookingId});">
+            <div class="modal-body">
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">Check-in Date</label>
+                        <input type="date" id="edit-hotel-in" class="form-control" value="${hotel.check_in}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Check-out Date</label>
+                        <input type="date" id="edit-hotel-out" class="form-control" value="${hotel.check_out}">
+                    </div>
+                </div>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label class="form-label">Number of Rooms</label>
+                        <input type="number" id="edit-hotel-rooms" min="1" max="10" class="form-control" value="${hotel.number_of_rooms || 1}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Number of Guests</label>
+                        <input type="number" id="edit-hotel-guests" min="1" max="20" class="form-control" value="${hotel.number_of_guests || 2}">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Room Type</label>
+                    <input type="text" id="edit-hotel-roomtype" class="form-control" value="${escapeHtml(hotel.room_type_selected || 'Standard Double Room')}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Booking Notes</label>
+                    <textarea id="edit-hotel-notes" class="form-control" rows="2">${escapeHtml(hotel.notes || '')}</textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Update Reservation</button>
+            </div>
+        </form>
+    `);
+}
+
+async function handleConfirmEditHotel(bookingId) {
+    if (!state.currentTrip) return;
+    const checkIn = document.getElementById('edit-hotel-in').value;
+    const checkOut = document.getElementById('edit-hotel-out').value;
+    const rooms = parseInt(document.getElementById('edit-hotel-rooms').value) || 1;
+    const guests = parseInt(document.getElementById('edit-hotel-guests').value) || 2;
+    const roomType = document.getElementById('edit-hotel-roomtype').value.trim();
+    const notes = document.getElementById('edit-hotel-notes').value.trim();
+
+    const res = await apiRequest(`/api/v1/trips/${state.currentTrip.id}/hotels/${bookingId}`, 'PUT', {
+        check_in: checkIn,
+        check_out: checkOut,
+        number_of_rooms: rooms,
+        number_of_guests: guests,
+        room_type_selected: roomType,
+        notes: notes
+    });
+
+    if (res.success) {
+        closeModal();
+        showToast('Hotel reservation updated!', 'success');
+        renderItineraryBuilder();
+    } else {
+        showToast(res.error || 'Failed to update reservation', 'error');
+    }
+}
+
+async function handleDeleteHotelBooking(bookingId) {
+    if (!state.currentTrip) return;
+    if (!confirm('Are you sure you want to remove this hotel accommodation?')) return;
+
+    const res = await apiRequest(`/api/v1/trips/${state.currentTrip.id}/hotels/${bookingId}`, 'DELETE');
+    if (res.success) {
+        showToast('Hotel removed and budget updated.', 'info');
+        renderItineraryBuilder();
+    } else {
+        showToast(res.error || 'Failed to remove hotel', 'error');
+    }
+}
+
 // ================= App Initialization =================
 window.addEventListener('DOMContentLoaded', async () => {
     // Check if initial URL is a public shared route
@@ -2378,3 +3149,4 @@ window.addEventListener('DOMContentLoaded', async () => {
     await initAuth();
     navigateTo('dashboard');
 });
+
