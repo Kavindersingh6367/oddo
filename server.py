@@ -16,6 +16,7 @@ import psycopg2
 import psycopg2.extras
 
 from database import get_db_connection, init_db
+from weather_service import WeatherService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 _logger = logging.getLogger("globetrotter.server")
@@ -790,6 +791,86 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                 conn.close()
                 return self._send_json({'success': True, 'comparison': hotels, 'nights': nights, 'rooms': rooms})
 
+            # Weather Forecast API
+            elif path == '/api/v1/weather':
+                city_id = query.get('city_id', [''])[0]
+                lat = query.get('lat', [''])[0]
+                lon = query.get('lon', [''])[0]
+                start_date = query.get('start_date', [''])[0]
+                end_date = query.get('end_date', [''])[0]
+                city_name = query.get('city_name', [''])[0]
+
+                if city_id:
+                    cur.execute("SELECT name, latitude, longitude FROM globetrotter_city WHERE id = %s", (city_id,))
+                    crow = cur.fetchone()
+                    if crow:
+                        city_name = crow['name']
+                        lat = crow['latitude'] or lat
+                        lon = crow['longitude'] or lon
+
+                f_data = WeatherService.fetch_weather_forecast(
+                    latitude=lat or 28.6139,
+                    longitude=lon or 77.2090,
+                    start_date_str=start_date,
+                    end_date_str=end_date,
+                    city_name=city_name
+                )
+                conn.close()
+                return self._send_json({'success': True, 'forecast': f_data})
+
+            # Trip Weather Analysis API
+            elif path.startswith('/api/v1/trips/') and path.endswith('/weather-analysis'):
+                if not user:
+                    conn.close()
+                    return self._send_error('Authentication required', status=401)
+
+                try:
+                    trip_id = int(path.split('/')[4])
+                except ValueError:
+                    conn.close()
+                    return self._send_error('Invalid trip ID')
+
+                cur.execute("SELECT * FROM globetrotter_trip WHERE id = %s", (trip_id,))
+                trip = cur.fetchone()
+                if not trip:
+                    conn.close()
+                    return self._send_error('Trip not found', status=404)
+
+                if trip['user_id'] != user['id'] and user.get('role') != 'admin' and not trip['is_public']:
+                    conn.close()
+                    return self._send_error('Access Denied', status=403)
+
+                t_dict = dict(trip)
+                cur.execute("""
+                    SELECT s.*, c.name as city_name, c.country as country_name, c.latitude, c.longitude
+                    FROM globetrotter_trip_stop s
+                    JOIN globetrotter_city c ON s.city_id = c.id
+                    WHERE s.trip_id = %s
+                    ORDER BY s.sequence ASC, s.arrival_date ASC;
+                """, (trip_id,))
+                stops = [dict(s) for s in cur.fetchall()]
+
+                cur.execute("""
+                    SELECT a.*, c.name as city_name, s.city_id
+                    FROM globetrotter_trip_activity a
+                    LEFT JOIN globetrotter_trip_stop s ON a.stop_id = s.id
+                    LEFT JOIN globetrotter_city c ON s.city_id = c.id
+                    WHERE a.trip_id = %s
+                    ORDER BY a.day_number ASC, a.sequence ASC;
+                """, (trip_id,))
+                activities = [dict(a) for a in cur.fetchall()]
+
+                city_ids = list(set([s['city_id'] for s in stops if s.get('city_id')]))
+                catalog_by_city = {}
+                if city_ids:
+                    cur.execute("SELECT * FROM globetrotter_activity WHERE city_id = ANY(%s) ORDER BY popularity DESC", (city_ids,))
+                    for ca in cur.fetchall():
+                        catalog_by_city.setdefault(ca['city_id'], []).append(dict(ca))
+
+                analysis = WeatherService.generate_trip_weather_intelligence(t_dict, stops, activities, catalog_by_city)
+                conn.close()
+                return self._send_json({'success': True, 'analysis': analysis})
+
             # 5. Trips List
             elif path == '/api/v1/trips':
                 if not user:
@@ -1449,6 +1530,120 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                     'message': 'Share link generated!'
                 })
 
+            # Weather Adjustment Single Action
+            elif path.startswith('/api/v1/trips/') and path.endswith('/weather-adjust'):
+                if not user:
+                    conn.close()
+                    return self._send_error('Authentication required', status=401)
+
+                trip_id = int(path.split('/')[4])
+                activity_id = int(body.get('activity_id'))
+                action_type = body.get('action_type')
+
+                cur.execute("SELECT * FROM globetrotter_trip WHERE id = %s", (trip_id,))
+                trip = cur.fetchone()
+                if not trip or (trip['user_id'] != user['id'] and user.get('role') != 'admin'):
+                    conn.close()
+                    return self._send_error('Trip not found or unauthorized', status=403)
+
+                if action_type == 'move_day':
+                    target_day = int(body.get('target_day_number'))
+                    cur.execute("""
+                        UPDATE globetrotter_trip_activity 
+                        SET day_number = %s 
+                        WHERE id = %s AND trip_id = %s;
+                    """, (target_day, activity_id, trip_id))
+                    msg = f"Activity rescheduled to Day {target_day}."
+                elif action_type == 'swap_indoor':
+                    sub = body.get('substitute_activity') or {}
+                    name = sub.get('name')
+                    category = sub.get('category', 'culture')
+                    cost = float(sub.get('estimated_cost') or 0.0)
+                    duration = float(sub.get('duration_hours') or 2.0)
+                    desc = sub.get('description', '')
+                    image = sub.get('image', '')
+                    cur.execute("""
+                        UPDATE globetrotter_trip_activity
+                        SET name = %s, category = %s, estimated_cost = %s, duration_hours = %s, notes = %s, image = %s
+                        WHERE id = %s AND trip_id = %s;
+                    """, (name, category, cost, duration, desc, image, activity_id, trip_id))
+                    msg = f"Replaced with indoor activity '{name}'."
+                else:
+                    conn.close()
+                    return self._send_error('Invalid action_type')
+
+                conn.close()
+                return self._send_json({'success': True, 'message': msg})
+
+            # Weather Adjustment Batch Action (Apply All Suggestions)
+            elif path.startswith('/api/v1/trips/') and path.endswith('/weather-adjust-all'):
+                if not user:
+                    conn.close()
+                    return self._send_error('Authentication required', status=401)
+
+                trip_id = int(path.split('/')[4])
+                cur.execute("SELECT * FROM globetrotter_trip WHERE id = %s", (trip_id,))
+                trip = cur.fetchone()
+                if not trip or (trip['user_id'] != user['id'] and user.get('role') != 'admin'):
+                    conn.close()
+                    return self._send_error('Trip not found or unauthorized', status=403)
+
+                t_dict = dict(trip)
+                cur.execute("""
+                    SELECT s.*, c.name as city_name, c.country as country_name, c.latitude, c.longitude
+                    FROM globetrotter_trip_stop s
+                    JOIN globetrotter_city c ON s.city_id = c.id
+                    WHERE s.trip_id = %s
+                    ORDER BY s.sequence ASC, s.arrival_date ASC;
+                """, (trip_id,))
+                stops = [dict(s) for s in cur.fetchall()]
+
+                cur.execute("""
+                    SELECT a.*, c.name as city_name, s.city_id
+                    FROM globetrotter_trip_activity a
+                    LEFT JOIN globetrotter_trip_stop s ON a.stop_id = s.id
+                    LEFT JOIN globetrotter_city c ON s.city_id = c.id
+                    WHERE a.trip_id = %s
+                    ORDER BY a.day_number ASC, a.sequence ASC;
+                """, (trip_id,))
+                activities = [dict(a) for a in cur.fetchall()]
+
+                city_ids = list(set([s['city_id'] for s in stops if s.get('city_id')]))
+                catalog_by_city = {}
+                if city_ids:
+                    cur.execute("SELECT * FROM globetrotter_activity WHERE city_id = ANY(%s) ORDER BY popularity DESC", (city_ids,))
+                    for ca in cur.fetchall():
+                        catalog_by_city.setdefault(ca['city_id'], []).append(dict(ca))
+
+                analysis = WeatherService.generate_trip_weather_intelligence(t_dict, stops, activities, catalog_by_city)
+                
+                adjusted_count = 0
+                for act in analysis.get('evaluated_activities', []):
+                    if act.get('risk_analysis', {}).get('risk_level') in ['high', 'moderate'] and act.get('suggestions'):
+                        sug = act['suggestions'][0]
+                        act_id = act['id']
+                        if sug['type'] == 'move_day':
+                            cur.execute("UPDATE globetrotter_trip_activity SET day_number = %s WHERE id = %s AND trip_id = %s",
+                                        (sug['target_day_number'], act_id, trip_id))
+                            adjusted_count += 1
+                        elif sug['type'] == 'swap_indoor':
+                            sub = sug.get('substitute_activity', {})
+                            cur.execute("""
+                                UPDATE globetrotter_trip_activity
+                                SET name = %s, category = %s, estimated_cost = %s, duration_hours = %s, notes = %s, image = %s
+                                WHERE id = %s AND trip_id = %s;
+                            """, (sub.get('name'), sub.get('category', 'culture'), float(sub.get('estimated_cost') or 0),
+                                  float(sub.get('duration_hours') or 2), sub.get('description', ''), sub.get('image', ''),
+                                  act_id, trip_id))
+                            adjusted_count += 1
+
+                conn.close()
+                return self._send_json({
+                    'success': True, 
+                    'adjusted_count': adjusted_count,
+                    'message': f"Applied {adjusted_count} smart weather adjustments across your itinerary!"
+                })
+
             # 11. Duplicate / Clone Trip
             elif path.startswith('/api/v1/trips/') and path.endswith('/duplicate'):
                 if not user:
@@ -1580,7 +1775,7 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                         a['sequence'], a['notes'], a['image']
                     ))
 
-                # Clone expenses
+                # Clone expenses for shared copy
                 cur.execute("SELECT * FROM globetrotter_expense WHERE trip_id = %s", (src_trip_id,))
                 for e in cur.fetchall():
                     new_stop_id = stop_map.get(e['stop_id'])

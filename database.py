@@ -14,17 +14,42 @@ from globetrotter.data.seed_data import DESTINATIONS_DATA
 logging.basicConfig(level=logging.INFO)
 _logger = logging.getLogger("globetrotter.db")
 
+import os
+
 DB_CONFIG = {
-    "dbname": "globetrotter_db",
-    "user": "postgres",
-    "host": "127.0.0.1",
-    "port": 5432
+    "dbname": os.environ.get("DB_NAME", os.environ.get("PGDATABASE", "globetrotter_db")),
+    "user": os.environ.get("DB_USER", os.environ.get("PGUSER", "postgres")),
+    "password": os.environ.get("DB_PASSWORD", os.environ.get("PGPASSWORD", None)),
+    "host": os.environ.get("DB_HOST", os.environ.get("PGHOST", "127.0.0.1")),
+    "port": int(os.environ.get("DB_PORT", os.environ.get("PGPORT", "5432"))),
 }
+DB_CONFIG = {k: v for k, v in DB_CONFIG.items() if v is not None}
+
+import subprocess
+import sys
+import time
+
+def _ensure_pg_service_running():
+    try:
+        subprocess.run(["wsl", "-d", "Ubuntu", "-u", "root", "--", "service", "postgresql", "start"], 
+                       capture_output=True, timeout=10)
+        time.sleep(1)
+    except Exception:
+        pass
 
 def get_db_connection():
-    conn = psycopg2.connect(**DB_CONFIG)
-    conn.autocommit = True
-    return conn
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        conn.autocommit = True
+        return conn
+    except psycopg2.OperationalError as e:
+        if "127.0.0.1" in str(DB_CONFIG.get("host")) or "localhost" in str(DB_CONFIG.get("host")):
+            _logger.info("Attempting to auto-start local PostgreSQL service...")
+            _ensure_pg_service_running()
+            conn = psycopg2.connect(**DB_CONFIG)
+            conn.autocommit = True
+            return conn
+        raise e
 
 def init_db():
     """Initializes normalized PostgreSQL schema, indexes, constraints and seed data."""

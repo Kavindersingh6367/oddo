@@ -312,6 +312,7 @@ class TestGlobeTrotter(unittest.TestCase):
         del_attempt = requests.delete(f"{BASE_URL}/api/v1/trips/{trip_a}", headers={"Authorization": f"Bearer {user_b}"})
         self.assertEqual(del_attempt.status_code, 403)
 
+
     def test_05_hotel_catalog_and_recommendations(self):
         """Test hotel recommendations engine, scoring, filtering, profiles, and comparison."""
         # 1. Query Jaipur Recommendations
@@ -544,6 +545,120 @@ class TestGlobeTrotter(unittest.TestCase):
         self.assertEqual(len(cloned_view['hotels']), 3)
         self.assertEqual(cloned_view['cost_accommodation'], total_accommodation_cost)
 
+
+    def test_06_weather_service_and_itinerary_adjustment(self):
+        """Verify Weather API, hazard risk analysis, and single/batch weather-aware adjustments."""
+        # 1. Test Weather Forecast Query Endpoint
+        w_res = requests.get(f"{BASE_URL}/api/v1/weather?city_id=1&start_date=2026-10-01&end_date=2026-10-04")
+        self.assertEqual(w_res.status_code, 200)
+        w_data = w_res.json()
+        self.assertTrue(w_data.get('success'))
+        fc = w_data.get('forecast', {})
+        self.assertEqual(fc.get('city_name'), 'Delhi')
+        self.assertGreaterEqual(len(fc.get('days', [])), 3)
+
+        # 2. Setup user and trip for weather intelligence testing
+        ts = int(time.time() * 1000)
+        u_res = requests.post(f"{BASE_URL}/api/v1/auth/signup", json={
+            "name": "Weather Explorer",
+            "email": f"weather_{ts}@globetrotter.travel",
+            "password": "password123"
+        }).json()
+        token = u_res['token']
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Create 3-day trip
+        trip_res = requests.post(f"{BASE_URL}/api/v1/trips", headers=headers, json={
+            "name": "Monsoon & Weather Test Tour",
+            "start_date": "2026-10-01",
+            "end_date": "2026-10-03",
+            "total_budget": 25000.0,
+            "currency": "INR"
+        }).json()
+        trip_id = trip_res['trip_id']
+
+        # Add Stop
+        stop_res = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/stops", headers=headers, json={
+            "city_id": 1,
+            "arrival_date": "2026-10-01",
+            "departure_date": "2026-10-03",
+            "duration_days": 3
+        }).json()
+        stop_id = stop_res['stop_id']
+
+        # Add Outdoor Activity on Day 1
+        act1 = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/activities", headers=headers, json={
+            "stop_id": stop_id,
+            "name": "Red Fort & Old Delhi Heritage Walk",
+            "category": "sightseeing",
+            "day_number": 1,
+            "scheduled_time": "10:00",
+            "duration_hours": 3.0,
+            "estimated_cost": 650.0
+        }).json()['activity_id']
+
+        # Add Indoor Activity on Day 2
+        act2 = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/activities", headers=headers, json={
+            "stop_id": stop_id,
+            "name": "National Craft Museum & Indoor Gallery",
+            "category": "culture",
+            "day_number": 2,
+            "scheduled_time": "14:00",
+            "duration_hours": 2.5,
+            "estimated_cost": 400.0
+        }).json()['activity_id']
+
+        # 3. Fetch Weather Analysis
+        analysis_res = requests.get(f"{BASE_URL}/api/v1/trips/{trip_id}/weather-analysis", headers=headers)
+        self.assertEqual(analysis_res.status_code, 200)
+        analysis_data = analysis_res.json()
+        self.assertTrue(analysis_data.get('success'))
+        analysis = analysis_data['analysis']
+        self.assertIn('weather_health_score', analysis)
+        self.assertEqual(len(analysis['evaluated_activities']), 2)
+
+        # 4. Test Single Weather Adjustment: Reschedule Day
+        adj_res = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/weather-adjust", headers=headers, json={
+            "activity_id": act1,
+            "action_type": "move_day",
+            "target_day_number": 3
+        })
+        self.assertEqual(adj_res.status_code, 200)
+        self.assertTrue(adj_res.json().get('success'))
+
+        # Verify activity was moved to Day 3
+        trip_detail = requests.get(f"{BASE_URL}/api/v1/trips/{trip_id}", headers=headers).json()['trip']
+        moved_act = [a for a in trip_detail['activities'] if a['id'] == act1][0]
+        self.assertEqual(moved_act['day_number'], 3)
+
+        # 5. Test Single Weather Adjustment: Swap with Indoor Activity
+        swap_res = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/weather-adjust", headers=headers, json={
+            "activity_id": act1,
+            "action_type": "swap_indoor",
+            "substitute_activity": {
+                "name": "National Museum & Art Center (Indoor)",
+                "category": "culture",
+                "estimated_cost": 500.0,
+                "duration_hours": 2.0,
+                "description": "Exquisite ancient art and artifacts."
+            }
+        })
+        self.assertEqual(swap_res.status_code, 200)
+        self.assertTrue(swap_res.json().get('success'))
+
+        # Verify activity was replaced
+        trip_detail2 = requests.get(f"{BASE_URL}/api/v1/trips/{trip_id}", headers=headers).json()['trip']
+        swapped_act = [a for a in trip_detail2['activities'] if a['id'] == act1][0]
+        self.assertEqual(swapped_act['name'], "National Museum & Art Center (Indoor)")
+        self.assertEqual(swapped_act['category'], "culture")
+
+        # 6. Test Batch Weather Adjustment (Apply All)
+        batch_res = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/weather-adjust-all", headers=headers)
+        self.assertEqual(batch_res.status_code, 200)
+        self.assertTrue(batch_res.json().get('success'))
+
+
 if __name__ == '__main__':
+
     unittest.main()
 
