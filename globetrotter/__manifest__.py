@@ -31,6 +31,7 @@ Key Features:
         'views/city_views.xml',
         'views/activity_views.xml',
         'views/trip_views.xml',
+        'views/hotel_views.xml',
         'views/expense_views.xml',
     ],
     'demo': [

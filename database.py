@@ -192,12 +192,73 @@ def init_db():
             );
         """)
 
+        # 10. Hotels Catalog Table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS globetrotter_hotel (
+                id SERIAL PRIMARY KEY,
+                city_id INT NOT NULL REFERENCES globetrotter_city(id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                address VARCHAR(255),
+                latitude NUMERIC(10, 6),
+                longitude NUMERIC(10, 6),
+                image TEXT,
+                rating NUMERIC(3, 2) DEFAULT 4.5,
+                review_count INT DEFAULT 150,
+                price_per_night NUMERIC(12, 2) NOT NULL DEFAULT 3000.0,
+                currency VARCHAR(10) DEFAULT 'INR',
+                hotel_category VARCHAR(50) NOT NULL DEFAULT 'mid_range',
+                amenities TEXT DEFAULT 'wifi,breakfast,ac,parking',
+                room_types TEXT DEFAULT 'Standard Double Room, Deluxe Suite',
+                max_guests INT DEFAULT 3,
+                available_rooms INT DEFAULT 10,
+                check_in_time VARCHAR(20) DEFAULT '14:00',
+                check_out_time VARCHAR(20) DEFAULT '11:00',
+                location_score NUMERIC(3, 1) DEFAULT 9.0,
+                cleanliness_score NUMERIC(3, 1) DEFAULT 9.2,
+                service_score NUMERIC(3, 1) DEFAULT 8.8,
+                value_score NUMERIC(3, 1) DEFAULT 9.0,
+                popularity_score INT DEFAULT 88,
+                active BOOLEAN DEFAULT TRUE
+            );
+            CREATE INDEX IF NOT EXISTS idx_hotel_city ON globetrotter_hotel(city_id);
+            CREATE INDEX IF NOT EXISTS idx_hotel_category ON globetrotter_hotel(hotel_category);
+            CREATE INDEX IF NOT EXISTS idx_hotel_price ON globetrotter_hotel(price_per_night);
+            CREATE INDEX IF NOT EXISTS idx_hotel_rating ON globetrotter_hotel(rating);
+        """)
+
+        # 11. Trip Hotel Bookings Table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS globetrotter_trip_hotel (
+                id SERIAL PRIMARY KEY,
+                trip_id INT NOT NULL REFERENCES globetrotter_trip(id) ON DELETE CASCADE,
+                hotel_id INT NOT NULL REFERENCES globetrotter_hotel(id) ON DELETE RESTRICT,
+                stop_id INT REFERENCES globetrotter_trip_stop(id) ON DELETE CASCADE,
+                expense_id INT REFERENCES globetrotter_expense(id) ON DELETE SET NULL,
+                check_in DATE NOT NULL,
+                check_out DATE NOT NULL,
+                number_of_nights INT DEFAULT 1,
+                number_of_guests INT DEFAULT 2,
+                number_of_rooms INT DEFAULT 1,
+                price_per_night NUMERIC(12, 2) NOT NULL DEFAULT 0.0,
+                total_cost NUMERIC(12, 2) NOT NULL DEFAULT 0.0,
+                room_type_selected VARCHAR(255) DEFAULT 'Standard Double Room',
+                notes TEXT,
+                status VARCHAR(50) DEFAULT 'selected',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_trip_hotel_trip ON globetrotter_trip_hotel(trip_id);
+            CREATE INDEX IF NOT EXISTS idx_trip_hotel_stop ON globetrotter_trip_hotel(stop_id);
+            CREATE INDEX IF NOT EXISTS idx_trip_hotel_hotel ON globetrotter_trip_hotel(hotel_id);
+        """)
+
     seed_database(conn)
     conn.close()
     _logger.info("Database schema initialized and seed verification complete.")
 
 def seed_database(conn):
-    """Populates default admin/demo accounts, destinations, activities, and initial showcase trips."""
+    """Populates default admin/demo accounts, destinations, activities, hotels, and initial showcase trips."""
+    from globetrotter.data.seed_data import HOTELS_DATA
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         # 1. Seed Demo & Admin Users
         cur.execute("SELECT id FROM res_users WHERE email = 'demo@globetrotter.travel'")
@@ -265,6 +326,61 @@ def seed_database(conn):
                         city_id, act["name"], act["description"], act["category"],
                         act["duration_hours"], act["estimated_cost"], "INR",
                         act["popularity"], act["image"], act.get("location_name", "")
+                    ))
+
+        # 3. Seed Hotels
+        for city_name, hotel_list in HOTELS_DATA.items():
+            cur.execute("SELECT id FROM globetrotter_city WHERE name = %s;", (city_name,))
+            city_row = cur.fetchone()
+            if not city_row:
+                continue
+            city_id = city_row["id"]
+
+            for h in hotel_list:
+                cur.execute("SELECT id FROM globetrotter_hotel WHERE city_id = %s AND name = %s;", (city_id, h["name"]))
+                existing_h = cur.fetchone()
+                if not existing_h:
+                    cur.execute("""
+                        INSERT INTO globetrotter_hotel (
+                            city_id, name, description, address, image, rating, review_count,
+                            price_per_night, currency, hotel_category, amenities, room_types,
+                            max_guests, available_rooms, location_score, cleanliness_score,
+                            service_score, value_score, popularity_score, active
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE);
+                    """, (
+                        city_id, h["name"], h.get("description", ""), h.get("address", ""),
+                        h.get("image", ""), h.get("rating", 4.5), h.get("review_count", 150),
+                        h["price_per_night"], h.get("currency", "INR"), h["hotel_category"],
+                        h.get("amenities", "wifi,breakfast,ac"), h.get("room_types", "Standard Double Room"),
+                        h.get("max_guests", 3), h.get("available_rooms", 10),
+                        h.get("location_score", 9.0), h.get("cleanliness_score", 9.2),
+                        h.get("service_score", 8.8), h.get("value_score", 9.0),
+                        h.get("popularity_score", 88)
+                    ))
+                else:
+                    cur.execute("""
+                        UPDATE globetrotter_hotel SET
+                            price_per_night = %s,
+                            rating = %s,
+                            hotel_category = %s,
+                            amenities = %s,
+                            image = %s,
+                            description = %s,
+                            address = %s,
+                            location_score = %s,
+                            cleanliness_score = %s,
+                            service_score = %s,
+                            value_score = %s,
+                            popularity_score = %s
+                        WHERE id = %s;
+                    """, (
+                        h["price_per_night"], h.get("rating", 4.5), h["hotel_category"],
+                        h.get("amenities", "wifi,breakfast,ac"), h.get("image", ""),
+                        h.get("description", ""), h.get("address", ""),
+                        h.get("location_score", 9.0), h.get("cleanliness_score", 9.2),
+                        h.get("service_score", 8.8), h.get("value_score", 9.0),
+                        h.get("popularity_score", 88), existing_h["id"]
                     ))
 
 if __name__ == "__main__":

@@ -52,6 +52,7 @@ class GlobetrotterTrip(models.Model):
     # Relational Children
     stop_ids = fields.One2many('globetrotter.trip.stop', 'trip_id', string='Stops / Cities', copy=True)
     trip_activity_ids = fields.One2many('globetrotter.trip.activity', 'trip_id', string='Scheduled Activities', copy=True)
+    trip_hotel_ids = fields.One2many('globetrotter.trip.hotel', 'trip_id', string='Accommodations', copy=True)
     expense_ids = fields.One2many('globetrotter.expense', 'trip_id', string='Expenses & Logistics', copy=True)
     
     # Sharing

@@ -312,5 +312,238 @@ class TestGlobeTrotter(unittest.TestCase):
         del_attempt = requests.delete(f"{BASE_URL}/api/v1/trips/{trip_a}", headers={"Authorization": f"Bearer {user_b}"})
         self.assertEqual(del_attempt.status_code, 403)
 
+    def test_05_hotel_catalog_and_recommendations(self):
+        """Test hotel recommendations engine, scoring, filtering, profiles, and comparison."""
+        # 1. Query Jaipur Recommendations
+        res = requests.get(f"{BASE_URL}/api/v1/hotels/recommendations?city=Jaipur&nights=2&rooms=1")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data.get('success'))
+        hotels = data.get('hotels', [])
+        self.assertGreaterEqual(len(hotels), 3)
+
+        # Check scoring and structured explanations
+        first_hotel = hotels[0]
+        self.assertIn('recommendation_score', first_hotel)
+        self.assertGreaterEqual(first_hotel['recommendation_score'], 50)
+        self.assertLessEqual(first_hotel['recommendation_score'], 100)
+        self.assertIn('primary_badge', first_hotel)
+        self.assertIn('why_points', first_hotel)
+        self.assertGreaterEqual(len(first_hotel['why_points']), 1)
+        self.assertIn('total_stay_cost', first_hotel)
+
+        # 2. Filter by Category = luxury
+        lux_res = requests.get(f"{BASE_URL}/api/v1/hotels/recommendations?city=Jaipur&category=luxury").json()
+        lux_hotels = lux_res.get('hotels', [])
+        self.assertTrue(all(h['hotel_category'] == 'luxury' for h in lux_hotels))
+
+        # 3. Sort by Price Ascending
+        sort_res = requests.get(f"{BASE_URL}/api/v1/hotels/recommendations?city=Jaipur&sort_by=price_asc").json()
+        prices = [float(h['price_per_night']) for h in sort_res['hotels']]
+        self.assertEqual(prices, sorted(prices))
+
+        # 4. Single Hotel Profile
+        h_id = first_hotel['id']
+        detail_res = requests.get(f"{BASE_URL}/api/v1/hotels/{h_id}")
+        self.assertEqual(detail_res.status_code, 200)
+        h_detail = detail_res.json().get('hotel', {})
+        self.assertEqual(h_detail.get('id'), h_id)
+        self.assertTrue(h_detail.get('name'))
+        self.assertIn('location_score', h_detail)
+
+        # 5. Side-by-Side Comparison Matrix
+        if len(hotels) >= 2:
+            comp_ids = f"{hotels[0]['id']},{hotels[1]['id']}"
+            comp_res = requests.get(f"{BASE_URL}/api/v1/hotels/compare?ids={comp_ids}&nights=2&rooms=1")
+            self.assertEqual(comp_res.status_code, 200)
+            comp_data = comp_res.json()
+            self.assertEqual(len(comp_data.get('comparison', [])), 2)
+
+    def test_06_budget_aware_hotel_selection_and_expense_sync(self):
+        """Test budget-aware scoring, booking creation, automatic expense sync, update, and removal."""
+        # 1. Login
+        login_res = requests.post(f"{BASE_URL}/api/v1/auth/demo-login", json={"role": "traveler"}).json()
+        token = login_res['token']
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 2. Create Trip with ₹40,000 budget
+        trip_res = requests.post(f"{BASE_URL}/api/v1/trips", headers=headers, json={
+            "name": "Delhi Heritage Weekend",
+            "start_date": "2026-10-10",
+            "end_date": "2026-10-13",
+            "total_budget": 40000.0,
+            "travelers_count": 2,
+            "currency": "INR",
+            "travel_style": "balanced"
+        }).json()
+        trip_id = trip_res['trip_id']
+
+        # 3. Add Delhi Stop
+        d_res = requests.get(f"{BASE_URL}/api/v1/destinations").json()
+        delhi_id = next(c['id'] for c in d_res['destinations'] if c['name'] == 'Delhi')
+        stop_res = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/stops", headers=headers, json={
+            "city_id": delhi_id,
+            "arrival_date": "2026-10-10",
+            "departure_date": "2026-10-13",
+            "notes": "Central Delhi stay"
+        }).json()
+        stop_id = stop_res['stop_id']
+
+        # 4. Get Delhi Hotels
+        h_res = requests.get(f"{BASE_URL}/api/v1/hotels/recommendations?city_id={delhi_id}&trip_id={trip_id}&check_in=2026-10-10&check_out=2026-10-13&rooms=1").json()
+        hotels = h_res['hotels']
+        self.assertGreaterEqual(len(hotels), 1)
+        selected_hotel = hotels[0]
+        hotel_id = selected_hotel['id']
+        rate = float(selected_hotel['price_per_night'])
+        nights = 3
+        expected_cost = rate * nights * 1
+
+        # 5. Book Hotel via API
+        book_res = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/hotels", headers=headers, json={
+            "hotel_id": hotel_id,
+            "stop_id": stop_id,
+            "check_in": "2026-10-10",
+            "check_out": "2026-10-13",
+            "number_of_guests": 2,
+            "number_of_rooms": 1,
+            "room_type_selected": "Deluxe King Room",
+            "notes": "Late check-in requested"
+        })
+        self.assertEqual(book_res.status_code, 200)
+        book_data = book_res.json()
+        self.assertTrue(book_data['success'])
+        booking_id = book_data['booking_id']
+        expense_id = book_data['expense_id']
+        self.assertEqual(book_data['total_cost'], expected_cost)
+
+        # 6. Verify Trip Financial Rollup
+        trip_data = requests.get(f"{BASE_URL}/api/v1/trips/{trip_id}", headers=headers).json()['trip']
+        self.assertEqual(trip_data['cost_accommodation'], expected_cost)
+        self.assertEqual(trip_data['total_estimated_cost'], expected_cost)
+        self.assertEqual(trip_data['remaining_budget'], 40000.0 - expected_cost)
+        self.assertEqual(len(trip_data['hotels']), 1)
+        self.assertEqual(trip_data['stops'][0]['hotel_booking']['id'], booking_id)
+
+        # 7. Update Hotel Booking (change to 2 rooms)
+        update_res = requests.put(f"{BASE_URL}/api/v1/trips/{trip_id}/hotels/{booking_id}", headers=headers, json={
+            "check_in": "2026-10-10",
+            "check_out": "2026-10-13",
+            "number_of_rooms": 2
+        })
+        self.assertEqual(update_res.status_code, 200)
+        new_expected_cost = rate * nights * 2
+        self.assertEqual(update_res.json()['total_cost'], new_expected_cost)
+
+        # Verify updated expense and trip budget
+        trip_data_after_update = requests.get(f"{BASE_URL}/api/v1/trips/{trip_id}", headers=headers).json()['trip']
+        self.assertEqual(trip_data_after_update['cost_accommodation'], new_expected_cost)
+        self.assertEqual(trip_data_after_update['remaining_budget'], 40000.0 - new_expected_cost)
+
+        # 8. Delete Hotel Booking and verify clean removal
+        del_res = requests.delete(f"{BASE_URL}/api/v1/trips/{trip_id}/hotels/{booking_id}", headers=headers)
+        self.assertEqual(del_res.status_code, 200)
+
+        trip_data_after_del = requests.get(f"{BASE_URL}/api/v1/trips/{trip_id}", headers=headers).json()['trip']
+        self.assertEqual(trip_data_after_del['cost_accommodation'], 0.0)
+        self.assertEqual(trip_data_after_del['total_estimated_cost'], 0.0)
+        self.assertEqual(trip_data_after_del['remaining_budget'], 40000.0)
+        self.assertEqual(len(trip_data_after_del['hotels']), 0)
+        self.assertIsNone(trip_data_after_del['stops'][0]['hotel_booking'])
+
+    def test_07_multi_city_hotel_booking_and_multi_tenancy(self):
+        """Test multi-city trip with distinct hotels for Delhi, Jaipur, and Udaipur, cloning, and security."""
+        # 1. Login User Alpha
+        ts = int(time.time() * 1000)
+        u1_res = requests.post(f"{BASE_URL}/api/v1/auth/signup", json={
+            "name": "Dev Traveler",
+            "email": f"dev_{ts}@globetrotter.travel",
+            "password": "password123"
+        }).json()
+        u1_token = u1_res['token']
+        headers1 = {"Authorization": f"Bearer {u1_token}"}
+
+        # 2. Create Multi-City Trip
+        trip_id = requests.post(f"{BASE_URL}/api/v1/trips", headers=headers1, json={
+            "name": "Golden Triangle Hotel Expedition",
+            "start_date": "2026-11-01",
+            "end_date": "2026-11-07",
+            "total_budget": 60000.0,
+            "travelers_count": 2
+        }).json()['trip_id']
+
+        d_res = requests.get(f"{BASE_URL}/api/v1/destinations").json()
+        cities = {c['name']: c['id'] for c in d_res['destinations']}
+
+        # Add 3 Stops: Delhi, Jaipur, Udaipur
+        stop_delhi = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/stops", headers=headers1, json={
+            "city_id": cities["Delhi"], "arrival_date": "2026-11-01", "departure_date": "2026-11-03"
+        }).json()['stop_id']
+
+        stop_jaipur = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/stops", headers=headers1, json={
+            "city_id": cities["Jaipur"], "arrival_date": "2026-11-03", "departure_date": "2026-11-05"
+        }).json()['stop_id']
+
+        stop_udaipur = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/stops", headers=headers1, json={
+            "city_id": cities["Udaipur"], "arrival_date": "2026-11-05", "departure_date": "2026-11-07"
+        }).json()['stop_id']
+
+        # Fetch hotels for each city and book
+        h_delhi = requests.get(f"{BASE_URL}/api/v1/hotels/recommendations?city_id={cities['Delhi']}").json()['hotels'][0]
+        h_jaipur = requests.get(f"{BASE_URL}/api/v1/hotels/recommendations?city_id={cities['Jaipur']}").json()['hotels'][0]
+        h_udaipur = requests.get(f"{BASE_URL}/api/v1/hotels/recommendations?city_id={cities['Udaipur']}").json()['hotels'][0]
+
+        # Book Delhi hotel
+        b1 = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/hotels", headers=headers1, json={
+            "hotel_id": h_delhi['id'], "stop_id": stop_delhi, "check_in": "2026-11-01", "check_out": "2026-11-03", "number_of_rooms": 1
+        }).json()['booking_id']
+
+        # Book Jaipur hotel
+        b2 = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/hotels", headers=headers1, json={
+            "hotel_id": h_jaipur['id'], "stop_id": stop_jaipur, "check_in": "2026-11-03", "check_out": "2026-11-05", "number_of_rooms": 1
+        }).json()['booking_id']
+
+        # Book Udaipur hotel
+        b3 = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/hotels", headers=headers1, json={
+            "hotel_id": h_udaipur['id'], "stop_id": stop_udaipur, "check_in": "2026-11-05", "check_out": "2026-11-07", "number_of_rooms": 1
+        }).json()['booking_id']
+
+        # Verify all 3 stops have distinct hotel bookings attached
+        trip_view = requests.get(f"{BASE_URL}/api/v1/trips/{trip_id}", headers=headers1).json()['trip']
+        self.assertEqual(len(trip_view['hotels']), 3)
+        self.assertEqual(trip_view['stops'][0]['hotel_booking']['hotel_id'], h_delhi['id'])
+        self.assertEqual(trip_view['stops'][1]['hotel_booking']['hotel_id'], h_jaipur['id'])
+        self.assertEqual(trip_view['stops'][2]['hotel_booking']['hotel_id'], h_udaipur['id'])
+
+        total_accommodation_cost = (
+            float(h_delhi['price_per_night']) * 2 +
+            float(h_jaipur['price_per_night']) * 2 +
+            float(h_udaipur['price_per_night']) * 2
+        )
+        self.assertEqual(trip_view['cost_accommodation'], total_accommodation_cost)
+
+        # 3. Multi-Tenant Security Check: User Beta cannot tamper with User Alpha's hotel bookings
+        u2_res = requests.post(f"{BASE_URL}/api/v1/auth/signup", json={
+            "name": "Attacker Beta",
+            "email": f"beta_{ts}@globetrotter.travel",
+            "password": "password123"
+        }).json()
+        headers2 = {"Authorization": f"Bearer {u2_res['token']}"}
+
+        tamper_put = requests.put(f"{BASE_URL}/api/v1/trips/{trip_id}/hotels/{b1}", headers=headers2, json={"number_of_rooms": 5})
+        self.assertEqual(tamper_put.status_code, 403)
+
+        tamper_del = requests.delete(f"{BASE_URL}/api/v1/trips/{trip_id}/hotels/{b1}", headers=headers2)
+        self.assertEqual(tamper_del.status_code, 403)
+
+        # 4. Clone / Copy Trip and verify hotel bookings clone properly
+        dup_res = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/duplicate", headers=headers1)
+        self.assertEqual(dup_res.status_code, 200)
+        cloned_id = dup_res.json()['trip_id']
+        cloned_view = requests.get(f"{BASE_URL}/api/v1/trips/{cloned_id}", headers=headers1).json()['trip']
+        self.assertEqual(len(cloned_view['hotels']), 3)
+        self.assertEqual(cloned_view['cost_accommodation'], total_accommodation_cost)
+
 if __name__ == '__main__':
     unittest.main()
+
