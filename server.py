@@ -1035,6 +1035,15 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
                         a['sequence'], a['notes'], a['image']
                     ))
 
+                # Clone expenses
+                cur.execute("SELECT * FROM globetrotter_expense WHERE trip_id = %s", (src_trip_id,))
+                for e in cur.fetchall():
+                    new_stop_id = stop_map.get(e['stop_id'])
+                    cur.execute("""
+                        INSERT INTO globetrotter_expense (trip_id, stop_id, category, name, amount, date, notes)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s);
+                    """, (new_trip_id, new_stop_id, e['category'], e['name'], e['amount'], e['date'], e['notes']))
+
                 conn.close()
                 return self._send_json({'success': True, 'trip_id': new_trip_id, 'message': 'Trip successfully copied to My Trips!'})
 

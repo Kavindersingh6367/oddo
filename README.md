@@ -1,3 +1,4 @@
+
 # 🌍 GlobeTrotter
 
 ### Personalized Intelligent Travel Planning Platform
@@ -799,3 +800,114 @@ Built with ❤️ for the Odoo Hackathon.
 This project is developed as a hackathon project.
 
 Add the appropriate license before public production/commercial use.
+=======
+# GlobeTrotter — Empowering Personalized Travel Planning
+
+> **Built for Odoo Hackathon**  
+> An end-to-end, production-grade travel planning platform featuring multi-city itineraries, curated activity discovery, dynamic budgeting engine, rule-based travel intelligence, interactive calendar/timeline views, secure public sharing, and 1-click trip duplication.
+
+---
+
+## 🌟 Key Features
+
+1. **Multi-City Itinerary Builder (Central Feature)**
+   - Add, remove, and reorder destination cities with sequence optimization.
+   - Day-by-day scheduling with time slots, categories, durations, and costs.
+   - Associated destination stops and stay notes.
+
+2. **Curated Destination & Activity Discovery**
+   - Rich seed catalog: Delhi, Jaipur, Udaipur, Mumbai, Goa, Bengaluru, Paris, London, Tokyo, Dubai, Singapore.
+   - Filter by Region, Travel Style, Popularity, and Cost Index ($ – $$$$$).
+   - Instant "+ Add to Itinerary" integration.
+
+3. **Dynamic Budget Engine & Rule-Based Intelligence**
+   - Real-time rollup of total estimated cost, cost per traveler, and cost per day.
+   - Categorized cost breakdowns: Transportation, Accommodation, Activities, Food, Miscellaneous.
+   - Transparent Rule-Based Alerts:
+     - Over-budget warnings with exact overrun amount.
+     - Dominant category warnings (e.g. accommodation $\ge 40\%$).
+     - High spending day outlier detection.
+     - Healthy budget affirmations.
+
+4. **Travel Balance Score (0 – 100)**
+   - Multi-factor evaluation engine:
+     - **Budget Discipline (30 pts)**
+     - **Activity Density & Pacing (25 pts)**
+     - **City Dwell Time & Travel Overhead (25 pts)**
+     - **Itinerary Completeness (20 pts)**
+   - Transparent breakdown modal explaining each factor.
+
+5. **Multi-View Experience**
+   - **Itinerary Builder**: Day-by-day activity cards with edit/delete actions.
+   - **Calendar View**: Interactive monthly/weekly grid with daily cost badges.
+   - **Vertical Timeline View**: Continuous journey nodes connecting days and transit.
+   - **Presentation Mode**: Clean executive showcase layout designed for live demos.
+
+6. **Secure Public Sharing & 1-Click Itinerary Duplication**
+   - Secure unguessable token generation (`/shared/<token>`).
+   - Read-only public preview with optional budget visibility toggle.
+   - **"Copy Trip to My Account"**: Clones master trip + child stops + activities + expenses into the caller's account with new relational IDs.
+
+7. **Odoo 17 Domain Architecture & Security**
+   - Normalized relational schema in PostgreSQL 17.
+   - Models: `globetrotter.trip`, `globetrotter.trip.stop`, `globetrotter.city`, `globetrotter.activity`, `globetrotter.trip.activity`, `globetrotter.expense`, `globetrotter.shared.trip`, `globetrotter.saved.destination`, `res.users`.
+   - Record Rules & ACLs enforcing strict multi-tenant isolation.
+   - Odoo XML Views: Trees, Forms, Kanban, Calendar, Graph, Pivot, and Menus.
+
+---
+
+## 🛠️ Technology Stack
+
+| Layer | Technology |
+|---|---|
+| **Backend & ORM** | Python 3.10+, Odoo 17 Model & Security Architecture |
+| **Database** | PostgreSQL 17 (`globetrotter_db`), Relational Schema with Foreign Keys & Cascades |
+| **Authentication** | Cryptographic token sessions with PBKDF2-SHA256 password hashing |
+| **Frontend** | Vanilla HTML5 & CSS3 Design System (Deep Purple/Indigo `#4F46E5` & Warm Coral `#F97316`), Responsive SPA |
+| **Testing** | Automated Python test suite with unit, integration, and security tests |
+
+---
+
+## 🚀 Installation & Running Locally
+
+### 1. Prerequisites
+- Python 3.10+
+- PostgreSQL 17 running on `localhost:5432` with user `postgres`
+
+### 2. Install Dependencies
+```powershell
+pip install psycopg2-binary passlib reportlab polib xlsxwriter pydot pyopenssl cryptography requests
+```
+
+### 3. Initialize Database & Run Server
+```powershell
+python server.py
+```
+The application will automatically:
+1. Create `globetrotter_db` schema, tables, constraints, and indexes in PostgreSQL.
+2. Populate rich seed destinations and activities.
+3. Start the server at `http://127.0.0.1:8069`.
+
+---
+
+## 🧪 Running Automated Tests
+
+Run the complete test suite:
+```powershell
+python tests/test_globetrotter.py
+```
+**Test Coverage**:
+- Destination catalog & seed verification
+- User registration, login, and duplicate rejection
+- Acceptance Test Workflow: "Rajasthan Explorer" creation, stops, activity scheduling, expenses, dynamic budget rollup, intelligence alerts, balance score, public sharing, and trip cloning
+- Security multi-tenancy & record rule isolation
+
+---
+
+## 📋 Hackathon Demo Credentials
+
+| Role | Email | Password | Quick Action |
+|---|---|---|---|
+| **Demo Traveler** | `demo@globetrotter.travel` | `demo123` | Click **"1-Click Demo Traveler"** on homepage |
+| **Administrator** | `admin@globetrotter.travel` | `admin123` | Click **"1-Click Admin Demo"** on homepage |
+
