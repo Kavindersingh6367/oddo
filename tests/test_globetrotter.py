@@ -296,7 +296,7 @@ class TestGlobeTrotter(unittest.TestCase):
             "password": "password123"
         }).json()['token']
 
-        # User Alpha creates private trip
+        
         trip_a = requests.post(f"{BASE_URL}/api/v1/trips", headers={"Authorization": f"Bearer {user_a}"}, json={
             "name": "Private Secret Alpha Vacation",
             "start_date": "2026-11-01",
@@ -304,12 +304,11 @@ class TestGlobeTrotter(unittest.TestCase):
             "total_budget": 50000.0
         }).json()['trip_id']
 
-        # User Beta attempts to read User Alpha's private trip directly
+        
         hack_attempt = requests.get(f"{BASE_URL}/api/v1/trips/{trip_a}", headers={"Authorization": f"Bearer {user_b}"})
         self.assertEqual(hack_attempt.status_code, 403)
         self.assertIn("Access Denied", hack_attempt.json().get('error', ''))
 
-        # User Beta attempts to delete User Alpha's trip directly
         del_attempt = requests.delete(f"{BASE_URL}/api/v1/trips/{trip_a}", headers={"Authorization": f"Bearer {user_b}"})
         self.assertEqual(del_attempt.status_code, 403)
 
