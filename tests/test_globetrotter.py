@@ -19,7 +19,7 @@ class TestGlobeTrotter(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        # Verify server is reachable or wait
+    
         max_retries = 10
         for i in range(max_retries):
             try:
