@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GlobeTrotter — Empowering Personalized Travel Planning</title>
-    <meta name="description" content="Personalized travel-planning platform with multi-city itineraries, dynamic budgeting, travel intelligence, calendar visualization, and public sharing.">
+    <title>GlobeTrotter — Travel Command Center &amp; Intelligent Itinerary Planner</title>
+    <meta name="description" content="Intelligent travel command center with multi-city itineraries, dynamic budgeting, travel intelligence, hotel discovery, and community sharing.">
     
-    <!-- Google Fonts: Outfit (Headings) & Inter (Body) -->
+    <!-- Google Fonts: Syne & Cinzel (Editorial Headings), Outfit (Accents), Plus Jakarta Sans (Body) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
     
     <!-- FontAwesome CDN for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -17,52 +17,52 @@
     <!-- Custom Design System CSS -->
     <link rel="stylesheet" href="/css/style.css">
 </head>
-<body>
+<body class="theme-command-center">
     <div id="app">
         <!-- Toast Notification Container -->
         <div id="toast-container" class="toast-container"></div>
 
-        <!-- Top Header Navigation -->
+        <!-- Top Header Navigation (Travel Command Center) -->
         <header class="app-header">
             <div class="header-container">
                 <div class="brand" onclick="navigateTo('dashboard')">
                     <div class="brand-icon">
-                        <i class="fa-solid fa-earth-asia"></i>
+                        <i class="fa-solid fa-compass"></i>
                     </div>
                     <div class="brand-text">
                         <span class="brand-title">GlobeTrotter</span>
-                        <span class="brand-badge">Odoo Hackathon</span>
+                        <span class="brand-badge">Command Center</span>
                     </div>
                 </div>
 
                 <nav class="nav-links" id="main-nav">
                     <button class="nav-item active" data-page="dashboard" onclick="navigateTo('dashboard')">
-                        <i class="fa-solid fa-compass"></i> Dashboard
+                        <i class="fa-solid fa-gauge-high"></i> <span>Command Center</span>
                     </button>
                     <button class="nav-item" data-page="trips" onclick="navigateTo('trips')">
-                        <i class="fa-solid fa-suitcase-rolling"></i> My Trips
+                        <i class="fa-solid fa-route"></i> <span>My Journeys</span>
                     </button>
                     <button class="nav-item" data-page="destinations" onclick="navigateTo('destinations')">
-                        <i class="fa-solid fa-map-location-dot"></i> Destinations
+                        <i class="fa-solid fa-earth-americas"></i> <span>Destinations</span>
                     </button>
                     <button class="nav-item" data-page="activities" onclick="navigateTo('activities')">
-                        <i class="fa-solid fa-ticket"></i> Activities
+                        <i class="fa-solid fa-ticket"></i> <span>Experiences</span>
                     </button>
                     <button class="nav-item" data-page="community" onclick="navigateTo('community')">
-                        <i class="fa-solid fa-users"></i> Community Hub
+                        <i class="fa-solid fa-book-journal-whills"></i> <span>Journal &amp; Hub</span>
                     </button>
                     <button class="nav-item admin-only" id="nav-admin" style="display: none;" data-page="admin" onclick="navigateTo('admin')">
-                        <i class="fa-solid fa-chart-line"></i> Admin Analytics
+                        <i class="fa-solid fa-chart-line"></i> <span>Platform Analytics</span>
                     </button>
                 </nav>
 
                 <div class="header-actions">
-                    <button class="btn btn-outline btn-search-trigger" onclick="openGlobalSearchModal()" title="Global Search (Ctrl+K)">
-                        <i class="fa-solid fa-magnifying-glass"></i> <span class="search-kbd-text">Search</span> <kbd class="search-kbd">Ctrl K</kbd>
+                    <button class="btn btn-search-trigger" onclick="openGlobalSearchModal()" title="Global Search (Ctrl+K)">
+                        <i class="fa-solid fa-magnifying-glass"></i> <span class="search-kbd-text">Search</span> <kbd class="search-kbd">⌘K</kbd>
                     </button>
 
-                    <button class="btn btn-primary btn-glow" onclick="openCreateTripModal()">
-                        <i class="fa-solid fa-plus"></i> <span>Plan New Trip</span>
+                    <button class="btn btn-primary btn-command-cta" onclick="openCreateTripModal()">
+                        <i class="fa-solid fa-plus"></i> <span>Plan Journey</span>
                     </button>
                     
                     <div id="auth-section" class="auth-section">
@@ -82,17 +82,41 @@
             <div class="footer-container">
                 <div class="footer-brand">
                     <div class="brand-icon small">
-                        <i class="fa-solid fa-earth-asia"></i>
+                        <i class="fa-solid fa-compass"></i>
                     </div>
-                    <span>GlobeTrotter Travel Planning Platform</span>
+                    <span>GlobeTrotter &bull; Intelligent Travel Command Center</span>
                 </div>
                 <div class="footer-meta">
-                    <span>Powered by Odoo ORM &amp; PostgreSQL 17</span>
+                    <span>Odoo ORM &bull; PostgreSQL 17</span>
                     <span>&bull;</span>
-                    <span>Multi-City Itineraries &bull; Dynamic Budgeting &bull; Travel Intelligence</span>
+                    <span>Multi-City Route Intelligence &bull; Dynamic Budgeting &bull; Travel DNA Profiling</span>
                 </div>
             </div>
         </footer>
+
+        <!-- Mobile Bottom Navigation Bar -->
+        <nav class="mobile-bottom-nav">
+            <button class="mobile-nav-btn active" data-page="dashboard" onclick="navigateTo('dashboard')">
+                <i class="fa-solid fa-gauge-high"></i>
+                <span>Command</span>
+            </button>
+            <button class="mobile-nav-btn" data-page="trips" onclick="navigateTo('trips')">
+                <i class="fa-solid fa-route"></i>
+                <span>Journeys</span>
+            </button>
+            <button class="mobile-nav-btn cta" onclick="openCreateTripModal()">
+                <div class="mobile-nav-fab"><i class="fa-solid fa-plus"></i></div>
+                <span>Plan</span>
+            </button>
+            <button class="mobile-nav-btn" data-page="destinations" onclick="navigateTo('destinations')">
+                <i class="fa-solid fa-earth-americas"></i>
+                <span>Explore</span>
+            </button>
+            <button class="mobile-nav-btn" data-page="community" onclick="navigateTo('community')">
+                <i class="fa-solid fa-book-journal-whills"></i>
+                <span>Journal</span>
+            </button>
+        </nav>
     </div>
 
     <!-- Modals Container -->

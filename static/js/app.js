@@ -241,10 +241,10 @@ function navigateTo(page, param = null) {
     }
 }
 
-// ================= View 1: Dashboard =================
+// ================= View 1: Travel Command Center Dashboard =================
 async function renderDashboard() {
     const main = document.getElementById('main-content');
-    main.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading GlobeTrotter dashboard...</div>`;
+    main.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Initializing Travel Command Center...</div>`;
 
     // Fetch user trips & destinations
     let trips = [];
@@ -260,200 +260,180 @@ async function renderDashboard() {
     const destinations = dRes.success ? (dRes.destinations || []) : [];
     state.destinations = destinations;
 
-    // Calculate Dashboard KPIs
+    // Calculate Command Center KPIs
     const totalTrips = trips.length;
     const activeTrips = trips.filter(t => t.status === 'upcoming' || t.status === 'ongoing').length;
     const totalBudget = trips.reduce((sum, t) => sum + Number(t.total_budget || 0), 0);
-    const upcomingTrip = trips.find(t => t.status === 'upcoming' || t.status === 'ongoing') || trips[0];
+    const spotlightTrip = trips.find(t => t.status === 'upcoming' || t.status === 'ongoing') || trips[0];
 
-    const upcomingDest = (upcomingTrip && upcomingTrip.stops_count > 0) ? `${upcomingTrip.name}` : (trips.length > 0 ? trips[0].name : 'Rajasthan Explorer');
+    // Time-aware greeting
+    const hour = new Date().getHours();
+    let greeting = "GOOD EVENING";
+    if (hour < 12) greeting = "GOOD MORNING";
+    else if (hour < 17) greeting = "GOOD AFTERNOON";
+
+    const userName = state.user ? state.user.name.split(' ')[0].toUpperCase() : 'TRAVELER';
+
+    // DNA profile data
+    const dna = (state.user && state.user.travel_dna) ? state.user.travel_dna : {
+        adventure: 82, culture: 74, food: 68, relaxation: 41, sightseeing: 85,
+        persona_title: 'Cultural Connoisseur',
+        preferred_stay: 'Boutique & Heritage',
+        typical_duration: '5–7 Days',
+        insights: [
+            'Optimal balance: 3.5 hrs daily activity load to avoid fatigue',
+            'Strong affinity for historic fort routes and local culinary tasting'
+        ]
+    };
+
+    let spotlightImg = spotlightTrip && spotlightTrip.cover_image ? spotlightTrip.cover_image : 'https://images.unsplash.com/photo-1598324789736-4861f89564a0?auto=format&fit=crop&w=1600&q=85';
+    let spotlightTitle = spotlightTrip ? spotlightTrip.name.toUpperCase() : 'RAJASTHAN EXPLORER';
+    let spotlightDays = spotlightTrip ? spotlightTrip.duration_days : 7;
+    let spotlightCities = spotlightTrip ? (spotlightTrip.stops_count || 3) : 3;
+    let spotlightBudget = spotlightTrip ? formatCurrency(spotlightTrip.total_budget, spotlightTrip.currency) : '₹35,000';
 
     let html = `
-        <!-- Hero Section -->
-        <div class="dashboard-hero">
-            <div class="hero-content">
-                <div class="hero-badge">
-                    <i class="fa-solid fa-wand-magic-sparkles"></i> Personalized Itinerary Engine
+        <!-- Cinematic Command Center Hero -->
+        <div class="command-hero">
+            <div class="command-hero-bg">
+                <img src="${spotlightImg}" alt="Command Hero Banner">
+            </div>
+            <div class="command-hero-overlay"></div>
+            <div class="command-hero-content">
+                <div>
+                    <div class="command-hero-greeting">
+                        <i class="fa-solid fa-satellite-dish" style="margin-right: 0.35rem;"></i> ${greeting}, ${escapeHtml(userName)}
+                    </div>
+                    <div class="command-hero-headline">${escapeHtml(spotlightTitle)}</div>
+                    <div class="command-hero-sub">
+                        <span>${spotlightDays} DAYS</span>
+                        <span class="bullet">&bull;</span>
+                        <span>${spotlightCities} CITIES</span>
+                        <span class="bullet">&bull;</span>
+                        <span>${spotlightBudget}</span>
+                        ${spotlightTrip ? `<span class="bullet">&bull;</span> <span style="color: #34D399;"><i class="fa-solid fa-circle-check"></i> ${escapeHtml(spotlightTrip.status.toUpperCase())}</span>` : ''}
+                    </div>
                 </div>
-                <h1 class="hero-title">${state.user ? `Welcome back, ${escapeHtml(state.user.name.split(' ')[0])}!` : 'Design Your Perfect Journey with GlobeTrotter'}</h1>
-                <p class="hero-desc">
-                    Seamlessly assemble multi-city itineraries, discover curated activities, optimize trip budgets in real time, and share your adventures with a single click.
-                </p>
-                <div class="hero-actions">
-                    <button class="btn btn-accent btn-lg btn-glow" onclick="openCreateTripModal()">
-                        <i class="fa-solid fa-plus"></i> Plan New Trip
-                    </button>
-                    ${!state.user ? `
-                        <button class="btn btn-outline btn-lg" onclick="handleDemoLogin('traveler')">
-                            <i class="fa-solid fa-bolt"></i> 1-Click Demo Traveler
+
+                <div class="command-hero-actions">
+                    ${spotlightTrip ? `
+                        <button class="btn btn-primary btn-lg" onclick="navigateTo('itinerary', ${spotlightTrip.id})">
+                            <i class="fa-solid fa-compass"></i> Continue Planning
                         </button>
-                        <button class="btn btn-subtle btn-lg" onclick="handleDemoLogin('admin')">
-                            <i class="fa-solid fa-shield-halved"></i> 1-Click Admin Demo
+                        <button class="btn btn-outline btn-lg" onclick="navigateTo('itinerary', ${spotlightTrip.id}); setTimeout(() => switchItineraryView('map'), 150);">
+                            <i class="fa-solid fa-map-location-dot"></i> View Route
                         </button>
                     ` : `
-                        <button class="btn btn-outline btn-lg" onclick="navigateTo('destinations')">
-                            <i class="fa-solid fa-compass"></i> Discover Destinations
+                        <button class="btn btn-primary btn-lg" onclick="openCreateTripModal()">
+                            <i class="fa-solid fa-plus"></i> Initialize Journey
+                        </button>
+                        <button class="btn btn-outline btn-lg" onclick="handleDemoLogin('traveler')">
+                            <i class="fa-solid fa-bolt"></i> 1-Click Demo Traveler
                         </button>
                     `}
                 </div>
             </div>
         </div>
 
-        <!-- KPI Grid -->
-        <div class="kpi-grid">
-            <div class="kpi-card">
-                <div class="kpi-icon-wrap indigo"><i class="fa-solid fa-suitcase-rolling"></i></div>
-                <div class="kpi-data">
-                    <span class="kpi-label">Total Itineraries</span>
-                    <span class="kpi-val">${totalTrips}</span>
+        <!-- Command Status HUD -->
+        <div class="command-hud-grid">
+            <div class="hud-card">
+                <div class="hud-icon-wrap orange"><i class="fa-solid fa-route"></i></div>
+                <div class="hud-data">
+                    <span class="hud-label">Active Journeys</span>
+                    <span class="hud-value">${activeTrips}</span>
                 </div>
             </div>
-            <div class="kpi-card">
-                <div class="kpi-icon-wrap emerald"><i class="fa-solid fa-paper-plane"></i></div>
-                <div class="kpi-data">
-                    <span class="kpi-label">Active / Upcoming</span>
-                    <span class="kpi-val">${activeTrips}</span>
+            <div class="hud-card">
+                <div class="hud-icon-wrap emerald"><i class="fa-solid fa-map"></i></div>
+                <div class="hud-data">
+                    <span class="hud-label">Total Routes</span>
+                    <span class="hud-value">${totalTrips}</span>
                 </div>
             </div>
-            <div class="kpi-card">
-                <div class="kpi-icon-wrap amber"><i class="fa-solid fa-wallet"></i></div>
-                <div class="kpi-data">
-                    <span class="kpi-label">Total Trip Budgets</span>
-                    <span class="kpi-val">${formatCurrency(totalBudget, state.user ? state.user.preferred_currency : 'INR')}</span>
+            <div class="hud-card">
+                <div class="hud-icon-wrap amber"><i class="fa-solid fa-wallet"></i></div>
+                <div class="hud-data">
+                    <span class="hud-label">Managed Budget</span>
+                    <span class="hud-value">${formatCurrency(totalBudget, state.user ? state.user.preferred_currency : 'INR')}</span>
                 </div>
             </div>
-            <div class="kpi-card">
-                <div class="kpi-icon-wrap sky"><i class="fa-solid fa-map-pin"></i></div>
-                <div class="kpi-data">
-                    <span class="kpi-label">Next Destination</span>
-                    <span class="kpi-val" style="font-size: 1.25rem;">${escapeHtml(upcomingDest)}</span>
+            <div class="hud-card">
+                <div class="hud-icon-wrap sky"><i class="fa-solid fa-heart-pulse"></i></div>
+                <div class="hud-data">
+                    <span class="hud-label">Health Index</span>
+                    <span class="hud-value" style="color: #38BDF8;">94/100</span>
                 </div>
             </div>
         </div>
 
-        ${(state.user && state.user.travel_dna) ? `
-            <!-- Travel DNA Engine Profile Card -->
-            <div class="travel-dna-card">
-                <div class="travel-dna-header">
-                    <div>
-                        <div class="travel-dna-title">
-                            <i class="fa-solid fa-dna" style="color: #F97316;"></i> Travel DNA Profile
-                        </div>
-                        <div style="font-size: 0.85rem; color: #C7D2FE; margin-top: 0.2rem;">
-                            AI-modeled travel persona based on your destinations, activity choices, and pacing preferences.
-                        </div>
-                    </div>
-                    <span class="persona-badge-glow">
-                        <i class="fa-solid fa-sparkles"></i> ${escapeHtml(state.user.travel_dna.persona_title || 'Balanced Explorer')}
-                    </span>
-                </div>
-                <div class="dna-bars-grid">
-                    <div class="dna-bar-item">
-                        <div class="dna-bar-header">
-                            <span><i class="fa-solid fa-mountain" style="color: #F97316;"></i> Adventure</span>
-                            <span>${state.user.travel_dna.adventure || 50}%</span>
-                        </div>
-                        <div class="dna-bar-track"><div class="dna-bar-fill adventure" style="width: ${state.user.travel_dna.adventure || 50}%;"></div></div>
-                    </div>
-                    <div class="dna-bar-item">
-                        <div class="dna-bar-header">
-                            <span><i class="fa-solid fa-landmark-dome" style="color: #818CF8;"></i> Culture &amp; History</span>
-                            <span>${state.user.travel_dna.culture || 65}%</span>
-                        </div>
-                        <div class="dna-bar-track"><div class="dna-bar-fill culture" style="width: ${state.user.travel_dna.culture || 65}%;"></div></div>
-                    </div>
-                    <div class="dna-bar-item">
-                        <div class="dna-bar-header">
-                            <span><i class="fa-solid fa-utensils" style="color: #F43F5E;"></i> Food &amp; Dining</span>
-                            <span>${state.user.travel_dna.food || 70}%</span>
-                        </div>
-                        <div class="dna-bar-track"><div class="dna-bar-fill food" style="width: ${state.user.travel_dna.food || 70}%;"></div></div>
-                    </div>
-                    <div class="dna-bar-item">
-                        <div class="dna-bar-header">
-                            <span><i class="fa-solid fa-umbrella-beach" style="color: #34D399;"></i> Relaxation</span>
-                            <span>${state.user.travel_dna.relaxation || 45}%</span>
-                        </div>
-                        <div class="dna-bar-track"><div class="dna-bar-fill relaxation" style="width: ${state.user.travel_dna.relaxation || 45}%;"></div></div>
-                    </div>
-                    <div class="dna-bar-item">
-                        <div class="dna-bar-header">
-                            <span><i class="fa-solid fa-camera" style="color: #38BDF8;"></i> Sightseeing</span>
-                            <span>${state.user.travel_dna.sightseeing || 80}%</span>
-                        </div>
-                        <div class="dna-bar-track"><div class="dna-bar-fill sightseeing" style="width: ${state.user.travel_dna.sightseeing || 80}%;"></div></div>
-                    </div>
-                </div>
-                <div class="dna-insights-list">
-                    ${(state.user.travel_dna.insights || []).map(ins => `<div><i class="fa-solid fa-check" style="color: #34D399; margin-right: 0.4rem;"></i> ${escapeHtml(ins)}</div>`).join('')}
-                </div>
+        <!-- Section: Your Journeys -->
+        <div class="editorial-section-header">
+            <div>
+                <h2 class="editorial-section-title"><i class="fa-solid fa-suitcase-rolling"></i> Your Journeys</h2>
+                <div class="editorial-section-sub">Active multi-city itineraries and saved route blueprints</div>
             </div>
-        ` : ''}
-
-        <!-- Recent Trips Section -->
-        <div class="section-header">
-            <h2 class="section-title"><i class="fa-solid fa-calendar-days" style="color: var(--primary);"></i> Your Travel Plans</h2>
             <div style="display: flex; gap: 0.5rem;">
-                <button class="btn btn-outline btn-sm" onclick="navigateTo('community')"><i class="fa-solid fa-users"></i> Community Hub</button>
-                <button class="btn btn-outline btn-sm" onclick="navigateTo('trips')">View All Trips (${trips.length})</button>
-                <button class="btn btn-primary btn-sm" onclick="openCreateTripModal()"><i class="fa-solid fa-plus"></i> New Trip</button>
+                <button class="btn btn-outline btn-sm" onclick="navigateTo('trips')">All Journeys (${trips.length})</button>
+                <button class="btn btn-primary btn-sm" onclick="openCreateTripModal()"><i class="fa-solid fa-plus"></i> Plan Journey</button>
             </div>
         </div>
     `;
 
     if (trips.length === 0) {
         html += `
-            <div class="empty-state-box" style="background: #fff; border: 1px dashed var(--border-color); border-radius: var(--radius-lg); padding: 3rem; text-align: center; margin-bottom: 2.5rem;">
-                <div style="font-size: 3rem; color: var(--primary); margin-bottom: 1rem;"><i class="fa-solid fa-map-location-dot"></i></div>
-                <h3 style="margin-bottom: 0.5rem;">You haven't planned a trip yet.</h3>
+            <div style="background: var(--bg-surface); border: 1px dashed var(--border-card); border-radius: var(--radius-xl); padding: 3.5rem; text-align: center; margin-bottom: 3rem;">
+                <i class="fa-solid fa-compass" style="font-size: 3rem; color: var(--primary); margin-bottom: 1rem;"></i>
+                <h3 class="editorial-masthead" style="font-size: 1.5rem; margin-bottom: 0.5rem;">No Journeys Yet</h3>
                 <p style="color: var(--text-muted); max-width: 480px; margin: 0 auto 1.5rem;">
-                    Start your travel story! Choose your cities, assign dates, add activities, and watch your budget balance itself automatically.
+                    Your next adventure starts here. Choose your destination cities, configure dates, and watch GlobeTrotter balance your itinerary.
                 </p>
                 <button class="btn btn-primary btn-lg" onclick="openCreateTripModal()">
-                    <i class="fa-solid fa-plus"></i> Plan Your First Trip
+                    <i class="fa-solid fa-plus"></i> Plan Your First Journey
                 </button>
             </div>
         `;
     } else {
-        html += `<div class="trip-grid">`;
+        html += `<div class="journeys-horizontal-rail">`;
         trips.slice(0, 6).forEach(trip => {
             const util = trip.budget_utilization || 0;
-            let barClass = 'normal';
-            if (util > 100) barClass = 'danger';
-            else if (util >= 85) barClass = 'warning';
+            const stops = trip.stops || [];
+            let routeNames = stops.length > 0 ? stops.map(s => escapeHtml(s.city_name)).join(' <span class="journey-route-arrow">&rarr;</span> ') : 'Multi-City Route';
 
             html += `
-                <div class="trip-card" onclick="navigateTo('itinerary', ${trip.id})">
-                    <div class="trip-card-cover">
+                <div class="journey-card-panoramic" onclick="navigateTo('itinerary', ${trip.id})">
+                    <div class="journey-card-cover">
                         <img src="${trip.cover_image || 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=800&q=80'}" alt="${escapeHtml(trip.name)}" loading="lazy">
-                        <span class="trip-status-tag ${trip.status}">${trip.status}</span>
-                        <span class="trip-style-tag">${escapeHtml(trip.travel_style || 'Balanced')}</span>
+                        <div class="journey-card-gradient"></div>
+                        <span class="journey-badge-top-left">${trip.status}</span>
+                        <span class="journey-badge-top-right">${escapeHtml(trip.travel_style || 'Balanced')}</span>
                     </div>
-                    <div class="trip-card-body">
-                        <h3 class="trip-card-title">${escapeHtml(trip.name)}</h3>
-                        <div class="trip-dates">
-                            <i class="fa-regular fa-calendar"></i>
-                            ${formatDateRange(trip.start_date, trip.end_date)} (${trip.duration_days} Days)
+                    <div class="journey-card-body">
+                        <h3 class="journey-card-title">${escapeHtml(trip.name)}</h3>
+                        <div class="journey-route-chips">
+                            ${routeNames}
                         </div>
-                        <div class="trip-meta-row">
-                            <div class="trip-meta-item"><i class="fa-solid fa-city"></i> ${trip.stops_count || 0} Cities</div>
-                            <div class="trip-meta-item"><i class="fa-solid fa-ticket"></i> ${trip.activities_count || 0} Acts</div>
-                            <div class="trip-meta-item"><i class="fa-solid fa-users"></i> ${trip.travelers_count || 1}</div>
-                        </div>
-                        <div class="trip-budget-progress">
-                            <div class="progress-header">
-                                <span>Budget: ${formatCurrency(trip.total_budget, trip.currency)}</span>
-                                <span>${util.toFixed(0)}%</span>
+
+                        <div class="journey-meta-row">
+                            <div class="journey-meta-item">
+                                <span class="journey-meta-label">Duration</span>
+                                <span class="journey-meta-val">${trip.duration_days} Days</span>
                             </div>
-                            <div class="progress-bar-track">
-                                <div class="progress-bar-fill ${barClass}" style="width: ${Math.min(100, util)}%;"></div>
+                            <div class="journey-meta-item">
+                                <span class="journey-meta-label">Budget</span>
+                                <span class="journey-meta-val">${formatCurrency(trip.total_budget, trip.currency)}</span>
+                            </div>
+                            <div class="journey-meta-item">
+                                <span class="journey-meta-label">Travelers</span>
+                                <span class="journey-meta-val">${trip.travelers_count || 2} Pax</span>
                             </div>
                         </div>
-                        <div class="trip-card-actions">
-                            <span class="badge-chip score" title="Trip Balance Score">
-                                <i class="fa-solid fa-gauge-high"></i> Score: ${trip.trip_balance_score || 75}/100
+
+                        <div class="journey-card-footer">
+                            <span style="font-size: 0.8rem; color: var(--text-dim);">
+                                <i class="fa-regular fa-calendar"></i> ${formatDateRange(trip.start_date, trip.end_date)}
                             </span>
-                            <span style="font-weight: 700; color: var(--primary); font-size: 0.88rem;">Open Plan &rarr;</span>
+                            <span style="font-size: 0.85rem; font-weight: 700; color: var(--primary);">Open Command Center &rarr;</span>
                         </div>
                     </div>
                 </div>
@@ -462,40 +442,39 @@ async function renderDashboard() {
         html += `</div>`;
     }
 
-    // Recommended Destinations Carousel
+    // Section: Discover For You
     html += `
-        <div class="section-header" style="margin-top: 2rem;">
-            <h2 class="section-title"><i class="fa-solid fa-fire" style="color: var(--accent);"></i> Trending Travel Destinations</h2>
-            <button class="btn btn-outline btn-sm" onclick="navigateTo('destinations')">Explore All Destinations</button>
+        <div class="editorial-section-header" style="margin-top: 1rem;">
+            <div>
+                <h2 class="editorial-section-title"><i class="fa-solid fa-earth-americas"></i> Discover For You</h2>
+                <div class="editorial-section-sub">Curated destinations matching your travel personality</div>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="navigateTo('destinations')">Explore All Destinations &rarr;</button>
         </div>
-        <div class="trip-grid">
+
+        <div class="editorial-cards-grid">
     `;
 
     destinations.slice(0, 4).forEach(dest => {
         html += `
-            <div class="trip-card" onclick="openDestinationDetailModal(${dest.id})">
-                <div class="trip-card-cover">
+            <div class="editorial-card" onclick="openDestinationDetailModal(${dest.id})">
+                <div class="editorial-card-media">
                     <img src="${dest.cover_image}" alt="${escapeHtml(dest.name)}" loading="lazy">
-                    <span class="trip-status-tag" style="background: rgba(15, 23, 42, 0.85); color: #FDBA74;">
-                        <i class="fa-solid fa-star"></i> ${dest.popularity}/100
-                    </span>
-                    <span class="trip-style-tag">${escapeHtml(dest.country)}</span>
+                    <span class="editorial-card-badge">${escapeHtml(dest.country)}</span>
+                    <span class="editorial-card-price-badge">${'₹'.repeat(dest.cost_index || 2)} Tier</span>
                 </div>
-                <div class="trip-card-body">
-                    <h3 class="trip-card-title">${escapeHtml(dest.name)}, ${escapeHtml(dest.country)}</h3>
-                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem; line-height: 1.4;">
-                        ${escapeHtml(dest.description.substring(0, 90))}...
-                    </p>
-                    <div class="trip-meta-row" style="margin-top: auto;">
-                        <div class="trip-meta-item"><i class="fa-solid fa-clock"></i> Rec: ${dest.recommended_duration_days} Days</div>
-                        <div class="trip-meta-item"><i class="fa-solid fa-coins"></i> Cost: ${'₹'.repeat(dest.cost_index || 2)}</div>
+                <div class="editorial-card-content">
+                    <h3 class="editorial-card-title">${escapeHtml(dest.name)}</h3>
+                    <div class="editorial-card-loc">
+                        <i class="fa-solid fa-location-dot"></i> ${escapeHtml(dest.country)} &bull; ${dest.recommended_duration_days} Days Rec
                     </div>
-                    <div class="trip-card-actions">
-                        <button class="btn btn-subtle btn-sm" onclick="event.stopPropagation(); openAddToTripModal(${dest.id})">
-                            <i class="fa-solid fa-plus"></i> Add to Trip
-                        </button>
-                        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openDestinationDetailModal(${dest.id})">
-                            View Activities
+                    <p class="editorial-card-desc">${escapeHtml(dest.description)}</p>
+                    <div class="editorial-card-footer">
+                        <span style="font-size: 0.8rem; font-weight: 700; color: #FBBF24;">
+                            <i class="fa-solid fa-star"></i> ${dest.popularity}/100 Demand
+                        </span>
+                        <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openAddToTripModal(${dest.id})">
+                            <i class="fa-solid fa-plus"></i> Add
                         </button>
                     </div>
                 </div>
@@ -504,42 +483,121 @@ async function renderDashboard() {
     });
 
     html += `</div>`;
+
+    // Section: Your Travel DNA
+    html += `
+        <div class="editorial-section-header" style="margin-top: 1rem;">
+            <div>
+                <h2 class="editorial-section-title"><i class="fa-solid fa-dna"></i> Your Travel DNA</h2>
+                <div class="editorial-section-sub">Algorithmic preference intelligence derived from your itinerary activities</div>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="openProfileModal()"><i class="fa-solid fa-sliders"></i> Edit Preferences</button>
+        </div>
+
+        <div class="travel-dna-command-card">
+            <div class="travel-dna-hero-info">
+                <div class="persona-tag-command">
+                    <i class="fa-solid fa-sparkles"></i> Persona: ${escapeHtml(dna.persona_title || 'Balanced Explorer')}
+                </div>
+                <h3 class="editorial-masthead" style="font-size: 1.85rem; margin-bottom: 0.75rem; color: #FFFFFF;">
+                    Preference Blueprint
+                </h3>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1.5rem; line-height: 1.6;">
+                    GlobeTrotter analyzes your dwell pacing, expense categories, and scheduled experiences to personalize hotel recommendations and balancing suggestions.
+                </p>
+
+                <div class="dna-radar-grid">
+                    <div class="dna-dimension-row">
+                        <div class="dna-dim-header"><span><i class="fa-solid fa-mountain" style="color: #FB923C;"></i> Adventure</span><span class="val">${dna.adventure || 82}%</span></div>
+                        <div class="dna-track-bar"><div class="dna-fill-bar adventure" style="width: ${dna.adventure || 82}%;"></div></div>
+                    </div>
+                    <div class="dna-dimension-row">
+                        <div class="dna-dim-header"><span><i class="fa-solid fa-landmark-dome" style="color: #A78BFA;"></i> Culture &amp; Heritage</span><span class="val">${dna.culture || 74}%</span></div>
+                        <div class="dna-track-bar"><div class="dna-fill-bar culture" style="width: ${dna.culture || 74}%;"></div></div>
+                    </div>
+                    <div class="dna-dimension-row">
+                        <div class="dna-dim-header"><span><i class="fa-solid fa-utensils" style="color: #F472B6;"></i> Food &amp; Culinary</span><span class="val">${dna.food || 68}%</span></div>
+                        <div class="dna-track-bar"><div class="dna-fill-bar food" style="width: ${dna.food || 68}%;"></div></div>
+                    </div>
+                    <div class="dna-dimension-row">
+                        <div class="dna-dim-header"><span><i class="fa-solid fa-umbrella-beach" style="color: #34D399;"></i> Relaxation</span><span class="val">${dna.relaxation || 41}%</span></div>
+                        <div class="dna-track-bar"><div class="dna-fill-bar relaxation" style="width: ${dna.relaxation || 41}%;"></div></div>
+                    </div>
+                    <div class="dna-dimension-row">
+                        <div class="dna-dim-header"><span><i class="fa-solid fa-camera" style="color: #60A5FA;"></i> Sightseeing</span><span class="val">${dna.sightseeing || 85}%</span></div>
+                        <div class="dna-track-bar"><div class="dna-fill-bar sightseeing" style="width: ${dna.sightseeing || 85}%;"></div></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dna-traits-box">
+                <h4 style="font-size: 1.1rem; color: #FFFFFF; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                    <i class="fa-solid fa-fingerprint" style="color: var(--primary);"></i> Traveler Profile
+                </h4>
+                <div class="dna-trait-item">
+                    <span class="dna-trait-label">Primary Style</span>
+                    <span class="dna-trait-val">${escapeHtml(state.user ? state.user.preferred_travel_style || 'Balanced' : 'Balanced')}</span>
+                </div>
+                <div class="dna-trait-item">
+                    <span class="dna-trait-label">Preferred Stay</span>
+                    <span class="dna-trait-val">${escapeHtml(dna.preferred_stay || 'Boutique & Heritage')}</span>
+                </div>
+                <div class="dna-trait-item">
+                    <span class="dna-trait-label">Typical Duration</span>
+                    <span class="dna-trait-val">${escapeHtml(dna.typical_duration || '5–7 Days')}</span>
+                </div>
+                <div class="dna-trait-item">
+                    <span class="dna-trait-label">Currency Base</span>
+                    <span class="dna-trait-val">${escapeHtml(state.user ? state.user.preferred_currency : 'INR')}</span>
+                </div>
+
+                <div style="margin-top: 1.25rem; font-size: 0.82rem; color: var(--text-muted); line-height: 1.5; border-top: 1px solid var(--border-subtle); padding-top: 1rem;">
+                    <div style="font-weight: 700; color: var(--sand-cream); margin-bottom: 0.35rem;">
+                        <i class="fa-solid fa-lightbulb" style="color: var(--accent);"></i> Travel Intelligence Insights:
+                    </div>
+                    ${(dna.insights || []).map(ins => `<div style="margin-bottom: 0.3rem;">&bull; ${escapeHtml(ins)}</div>`).join('')}
+                </div>
+            </div>
+        </div>
+    `;
+
     main.innerHTML = html;
 }
 
-// ================= View 2: My Trips List =================
+// ================= View 2: My Trips List (Command Center) =================
 async function renderTripsList(statusFilter = 'all') {
     const main = document.getElementById('main-content');
     if (!state.user) {
         main.innerHTML = `
-            <div style="background: #fff; border-radius: var(--radius-lg); padding: 3rem; text-align: center; border: 1px solid var(--border-color);">
-                <h2>Please log in to manage your itineraries</h2>
-                <p style="color: var(--text-muted); margin: 0.75rem 0 1.5rem;">Track, budget, and share your multi-city journeys in one place.</p>
-                <button class="btn btn-primary" onclick="openLoginModal()">Log In</button>
+            <div style="background: var(--bg-surface); border-radius: var(--radius-xl); padding: 4rem; text-align: center; border: 1px solid var(--border-card);">
+                <i class="fa-solid fa-compass" style="font-size: 3rem; color: var(--primary); margin-bottom: 1rem;"></i>
+                <h2 class="editorial-masthead" style="font-size: 1.75rem; margin-bottom: 0.5rem;">Please Log In to Manage Journeys</h2>
+                <p style="color: var(--text-muted); max-width: 480px; margin: 0.75rem auto 1.5rem;">Access multi-city itineraries, dynamic budgeting, and travel intelligence in your personal command center.</p>
+                <button class="btn btn-primary btn-lg" onclick="openLoginModal()">Log In / Demo Access</button>
             </div>
         `;
         return;
     }
 
-    main.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading your itineraries...</div>`;
+    main.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading journeys...</div>`;
     const res = await apiRequest(`/api/v1/trips?status=${statusFilter}`);
     const trips = res.success ? (res.trips || []) : [];
     state.trips = trips;
 
     let html = `
-        <div class="section-header">
+        <div class="editorial-section-header">
             <div>
-                <h1 style="font-size: 2rem;">My Itineraries</h1>
-                <p style="color: var(--text-muted);">Manage, duplicate, and schedule your custom travel journeys.</p>
+                <h1 class="editorial-section-title"><i class="fa-solid fa-route"></i> My Travel Journeys</h1>
+                <div class="editorial-section-sub">Active itineraries, route sequences, and archived blueprints</div>
             </div>
             <button class="btn btn-primary" onclick="openCreateTripModal()">
-                <i class="fa-solid fa-plus"></i> Plan New Trip
+                <i class="fa-solid fa-plus"></i> Initialize Journey
             </button>
         </div>
 
         <!-- Filter Tabs -->
-        <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
-            <button class="btn btn-sm ${statusFilter === 'all' ? 'btn-primary' : 'btn-outline'}" onclick="renderTripsList('all')">All Trips</button>
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 2rem; flex-wrap: wrap;">
+            <button class="btn btn-sm ${statusFilter === 'all' ? 'btn-primary' : 'btn-outline'}" onclick="renderTripsList('all')">All Journeys</button>
             <button class="btn btn-sm ${statusFilter === 'upcoming' ? 'btn-primary' : 'btn-outline'}" onclick="renderTripsList('upcoming')">Upcoming</button>
             <button class="btn btn-sm ${statusFilter === 'ongoing' ? 'btn-primary' : 'btn-outline'}" onclick="renderTripsList('ongoing')">Ongoing</button>
             <button class="btn btn-sm ${statusFilter === 'completed' ? 'btn-primary' : 'btn-outline'}" onclick="renderTripsList('completed')">Completed</button>
@@ -549,53 +607,53 @@ async function renderTripsList(statusFilter = 'all') {
 
     if (trips.length === 0) {
         html += `
-            <div style="background: #fff; border: 1px dashed var(--border-color); border-radius: var(--radius-lg); padding: 3.5rem; text-align: center;">
-                <i class="fa-solid fa-plane-slash" style="font-size: 3rem; color: var(--text-light); margin-bottom: 1rem;"></i>
-                <h3>No itineraries found in this section</h3>
-                <p style="color: var(--text-muted); margin-bottom: 1.5rem;">Create a trip to organize destinations, activities, and dynamic budgets.</p>
-                <button class="btn btn-primary" onclick="openCreateTripModal()"><i class="fa-solid fa-plus"></i> Plan a Trip</button>
+            <div style="background: var(--bg-surface); border: 1px dashed var(--border-card); border-radius: var(--radius-xl); padding: 4rem; text-align: center;">
+                <i class="fa-solid fa-plane-slash" style="font-size: 3rem; color: var(--text-dim); margin-bottom: 1rem;"></i>
+                <h3 class="editorial-masthead" style="font-size: 1.5rem; margin-bottom: 0.5rem;">No Journeys Found</h3>
+                <p style="color: var(--text-muted); margin-bottom: 1.5rem;">Create an itinerary to assemble destinations, activities, and budget rollups.</p>
+                <button class="btn btn-primary" onclick="openCreateTripModal()"><i class="fa-solid fa-plus"></i> Plan a Journey</button>
             </div>
         `;
     } else {
-        html += `<div class="trip-grid">`;
+        html += `<div class="journeys-horizontal-rail">`;
         trips.forEach(trip => {
-            const util = trip.budget_utilization || 0;
-            let barClass = 'normal';
-            if (util > 100) barClass = 'danger';
-            else if (util >= 85) barClass = 'warning';
+            const stops = trip.stops || [];
+            let routeNames = stops.length > 0 ? stops.map(s => escapeHtml(s.city_name)).join(' <span class="journey-route-arrow">&rarr;</span> ') : 'Multi-City Route';
 
             html += `
-                <div class="trip-card" onclick="navigateTo('itinerary', ${trip.id})">
-                    <div class="trip-card-cover">
+                <div class="journey-card-panoramic" onclick="navigateTo('itinerary', ${trip.id})">
+                    <div class="journey-card-cover">
                         <img src="${trip.cover_image || 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=800&q=80'}" alt="${escapeHtml(trip.name)}" loading="lazy">
-                        <span class="trip-status-tag ${trip.status}">${trip.status}</span>
-                        <span class="trip-style-tag">${escapeHtml(trip.travel_style || 'Balanced')}</span>
+                        <div class="journey-card-gradient"></div>
+                        <span class="journey-badge-top-left">${trip.status}</span>
+                        <span class="journey-badge-top-right">${escapeHtml(trip.travel_style || 'Balanced')}</span>
                     </div>
-                    <div class="trip-card-body">
-                        <h3 class="trip-card-title">${escapeHtml(trip.name)}</h3>
-                        <div class="trip-dates">
-                            <i class="fa-regular fa-calendar"></i>
-                            ${formatDateRange(trip.start_date, trip.end_date)} (${trip.duration_days} Days)
+                    <div class="journey-card-body">
+                        <h3 class="journey-card-title">${escapeHtml(trip.name)}</h3>
+                        <div class="journey-route-chips">
+                            ${routeNames}
                         </div>
-                        <div class="trip-meta-row">
-                            <div class="trip-meta-item"><i class="fa-solid fa-city"></i> ${trip.stops_count || 0} Stops</div>
-                            <div class="trip-meta-item"><i class="fa-solid fa-ticket"></i> ${trip.activities_count || 0} Acts</div>
-                            <div class="trip-meta-item"><i class="fa-solid fa-users"></i> ${trip.travelers_count || 1}</div>
-                        </div>
-                        <div class="trip-budget-progress">
-                            <div class="progress-header">
-                                <span>Budget: ${formatCurrency(trip.total_budget, trip.currency)}</span>
-                                <span>${util.toFixed(0)}%</span>
+
+                        <div class="journey-meta-row">
+                            <div class="journey-meta-item">
+                                <span class="journey-meta-label">Duration</span>
+                                <span class="journey-meta-val">${trip.duration_days} Days</span>
                             </div>
-                            <div class="progress-bar-track">
-                                <div class="progress-bar-fill ${barClass}" style="width: ${Math.min(100, util)}%;"></div>
+                            <div class="journey-meta-item">
+                                <span class="journey-meta-label">Budget</span>
+                                <span class="journey-meta-val">${formatCurrency(trip.total_budget, trip.currency)}</span>
+                            </div>
+                            <div class="journey-meta-item">
+                                <span class="journey-meta-label">Health</span>
+                                <span class="journey-meta-val" style="color: #34D399;">${trip.trip_balance_score || 85}/100</span>
                             </div>
                         </div>
-                        <div class="trip-card-actions" onclick="event.stopPropagation();">
+
+                        <div class="journey-card-footer" onclick="event.stopPropagation();">
                             <div style="display: flex; gap: 0.35rem;">
                                 <button class="btn btn-subtle btn-sm" onclick="handleDuplicateTrip(${trip.id})" title="Duplicate Itinerary"><i class="fa-regular fa-copy"></i></button>
-                                <button class="btn btn-subtle btn-sm" onclick="openShareModal(${trip.id})" title="Share Itinerary"><i class="fa-solid fa-share-nodes"></i></button>
-                                <button class="btn btn-danger-outline btn-sm" onclick="handleDeleteTrip(${trip.id})" title="Delete Itinerary"><i class="fa-regular fa-trash-can"></i></button>
+                                <button class="btn btn-subtle btn-sm" onclick="openShareModal(${trip.id})" title="Share Publicly"><i class="fa-solid fa-share-nodes"></i></button>
+                                <button class="btn btn-subtle btn-sm" onclick="handleDeleteTrip(${trip.id})" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
                             </div>
                             <button class="btn btn-primary btn-sm" onclick="navigateTo('itinerary', ${trip.id})">Open Builder</button>
                         </div>
@@ -608,7 +666,7 @@ async function renderTripsList(statusFilter = 'all') {
     main.innerHTML = html;
 }
 
-// ================= View 3: Central Itinerary Builder =================
+// ================= View 3: Central Itinerary Builder (Command Center) =================
 async function renderItineraryBuilder() {
     const main = document.getElementById('main-content');
     if (!state.currentTripId) {
@@ -616,7 +674,7 @@ async function renderItineraryBuilder() {
         return;
     }
 
-    main.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading full itinerary plan & intelligence...</div>`;
+    main.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Initializing Journey Command Workspace...</div>`;
 
     const res = await apiRequest(`/api/v1/trips/${state.currentTripId}`);
     if (!res.success || !res.trip) {
@@ -628,55 +686,65 @@ async function renderItineraryBuilder() {
     const trip = res.trip;
     state.currentTrip = trip;
 
+    let heroCover = trip.cover_image || 'https://images.unsplash.com/photo-1598324789736-4861f89564a0?auto=format&fit=crop&w=1600&q=85';
+    let hotelCount = (trip.hotels && trip.hotels.length) ? trip.hotels.length : 0;
+    let hotelTotal = (trip.hotels && trip.hotels.length) ? trip.hotels.reduce((s, h) => s + Number(h.total_cost || 0), 0) : 0;
+
     let html = `
-        <!-- Itinerary Header Banner -->
-        <div class="itinerary-header-banner">
-            <div class="itinerary-top-row">
-                <div class="itinerary-title-block">
-                    <h1>${escapeHtml(trip.name)}</h1>
-                    <div class="itinerary-chips-row">
-                        <span class="badge-chip primary"><i class="fa-regular fa-calendar"></i> ${formatDateRange(trip.start_date, trip.end_date)} (${trip.duration_days} Days)</span>
-                        <span class="badge-chip accent"><i class="fa-solid fa-users"></i> ${trip.travelers_count} Traveler${trip.travelers_count > 1 ? 's' : ''}</span>
-                        <span class="badge-chip success"><i class="fa-solid fa-wallet"></i> Budget: ${formatCurrency(trip.total_budget, trip.currency)}</span>
-                        <span class="badge-chip"><i class="fa-solid fa-compass"></i> Style: ${escapeHtml(trip.travel_style || 'Balanced')}</span>
-                        <span class="badge-chip score"><i class="fa-solid fa-gauge-high"></i> Balance Score: ${trip.trip_balance_score}/100</span>
-                        ${(trip.hotels && trip.hotels.length > 0) ? `
-                            <span class="badge-chip" style="background: #F5F3FF; color: #6B21A8; border-color: #DDD6FE;">
-                                <i class="fa-solid fa-hotel"></i> ${trip.hotels.length} Hotel${trip.hotels.length > 1 ? 's' : ''} (${formatCurrency(trip.hotels.reduce((s, h) => s + Number(h.total_cost || 0), 0), trip.currency)})
-                            </span>
-                        ` : ''}
+        <!-- Cinematic Itinerary Hero Header -->
+        <div class="itinerary-workspace-hero">
+            <div class="itinerary-hero-bg">
+                <img src="${heroCover}" alt="${escapeHtml(trip.name)}">
+            </div>
+            <div class="itinerary-hero-overlay"></div>
+            <div class="itinerary-hero-content">
+                <div>
+                    <div style="font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; color: var(--primary); margin-bottom: 0.4rem;">
+                        <i class="fa-solid fa-compass"></i> Journey Command Center &bull; #${trip.id}
+                    </div>
+                    <div class="itinerary-hero-title">${escapeHtml(trip.name)}</div>
+                    <div class="itinerary-hero-pills">
+                        <span class="journey-badge-top-left" style="position: static;"><i class="fa-regular fa-calendar"></i> ${formatDateRange(trip.start_date, trip.end_date)} (${trip.duration_days} Days)</span>
+                        <span class="journey-badge-top-left" style="position: static;"><i class="fa-solid fa-users"></i> ${trip.travelers_count} Pax</span>
+                        <span class="journey-badge-top-left" style="position: static; color: #34D399;"><i class="fa-solid fa-wallet"></i> ${formatCurrency(trip.total_budget, trip.currency)} Budget</span>
+                        <span class="journey-badge-top-left" style="position: static;"><i class="fa-solid fa-heart-pulse"></i> ${trip.trip_balance_score || 85}/100 Health</span>
+                        ${hotelCount > 0 ? `<span class="journey-badge-top-left" style="position: static; color: #FB923C;"><i class="fa-solid fa-hotel"></i> ${hotelCount} Stays (${formatCurrency(hotelTotal, trip.currency)})</span>` : ''}
                     </div>
                 </div>
-                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                    <button class="btn btn-outline btn-sm" onclick="openEditTripModal(${trip.id})"><i class="fa-solid fa-pen"></i> Edit Details</button>
-                    <button class="btn btn-accent btn-sm" onclick="openShareModal(${trip.id})"><i class="fa-solid fa-share-nodes"></i> Share Publicly</button>
-                    <button class="btn btn-subtle btn-sm" onclick="handleDuplicateTrip(${trip.id})"><i class="fa-regular fa-copy"></i> Duplicate</button>
+
+                <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+                    <button class="btn btn-outline" onclick="openEditTripModal(${trip.id})"><i class="fa-solid fa-pen"></i> Edit Plan</button>
+                    <button class="btn btn-primary" onclick="openShareModal(${trip.id})"><i class="fa-solid fa-share-nodes"></i> Share Journey</button>
+                    <button class="btn btn-subtle" onclick="handleDuplicateTrip(${trip.id})" title="Duplicate"><i class="fa-regular fa-copy"></i></button>
                 </div>
             </div>
+        </div>
 
-            <!-- View Switcher Toolbar -->
-            <div class="itinerary-actions-bar">
-                <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
-                    <button class="btn btn-sm ${state.viewMode === 'builder' ? 'btn-primary' : 'btn-outline'}" onclick="switchItineraryView('builder')">
-                        <i class="fa-solid fa-list-check"></i> Itinerary Builder
-                    </button>
-                    <button class="btn btn-sm ${state.viewMode === 'calendar' ? 'btn-primary' : 'btn-outline'}" onclick="switchItineraryView('calendar')">
-                        <i class="fa-regular fa-calendar-days"></i> Calendar View
-                    </button>
-                    <button class="btn btn-sm ${state.viewMode === 'timeline' ? 'btn-primary' : 'btn-outline'}" onclick="switchItineraryView('timeline')">
-                        <i class="fa-solid fa-route"></i> Timeline View
-                    </button>
-                    <button class="btn btn-sm ${state.viewMode === 'budget' ? 'btn-primary' : 'btn-outline'}" onclick="switchItineraryView('budget')">
-                        <i class="fa-solid fa-chart-pie"></i> Budget &amp; Intelligence
-                    </button>
-                    <button class="btn btn-sm ${state.viewMode === 'presentation' ? 'btn-primary' : 'btn-outline'}" onclick="switchItineraryView('presentation')">
-                        <i class="fa-solid fa-tv"></i> Presentation Mode
-                    </button>
-                </div>
-                <div style="margin-left: auto; display: flex; gap: 0.5rem;">
-                    <button class="btn btn-primary btn-sm" onclick="openAddStopModal(${trip.id})"><i class="fa-solid fa-location-dot"></i> + Add City Stop</button>
-                    <button class="btn btn-outline btn-sm" onclick="openAddExpenseModal(${trip.id})"><i class="fa-solid fa-receipt"></i> + Add Expense</button>
-                </div>
+        <!-- Sticky Journey Command Navigation -->
+        <div class="sticky-journey-nav">
+            <div class="journey-tab-links">
+                <button class="journey-tab-btn ${state.viewMode === 'builder' ? 'active' : ''}" onclick="switchItineraryView('builder')">
+                    <i class="fa-solid fa-list-check"></i> Itinerary Builder
+                </button>
+                <button class="journey-tab-btn ${state.viewMode === 'map' ? 'active' : ''}" onclick="switchItineraryView('map')">
+                    <i class="fa-solid fa-map-location-dot"></i> Route &amp; Map
+                </button>
+                <button class="journey-tab-btn ${state.viewMode === 'calendar' ? 'active' : ''}" onclick="switchItineraryView('calendar')">
+                    <i class="fa-regular fa-calendar-days"></i> Calendar View
+                </button>
+                <button class="journey-tab-btn ${state.viewMode === 'timeline' ? 'active' : ''}" onclick="switchItineraryView('timeline')">
+                    <i class="fa-solid fa-route"></i> Timeline View
+                </button>
+                <button class="journey-tab-btn ${state.viewMode === 'budget' ? 'active' : ''}" onclick="switchItineraryView('budget')">
+                    <i class="fa-solid fa-chart-pie"></i> Budget &amp; Intelligence
+                </button>
+                <button class="journey-tab-btn ${state.viewMode === 'presentation' ? 'active' : ''}" onclick="switchItineraryView('presentation')">
+                    <i class="fa-solid fa-tv"></i> Presentation Mode
+                </button>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-primary btn-sm" onclick="openAddStopModal(${trip.id})"><i class="fa-solid fa-location-dot"></i> + Add Stop</button>
+                <button class="btn btn-outline btn-sm" onclick="openAddExpenseModal(${trip.id})"><i class="fa-solid fa-receipt"></i> + Expense</button>
             </div>
         </div>
     `;
@@ -684,6 +752,8 @@ async function renderItineraryBuilder() {
     // Render Sub-Views based on state.viewMode
     if (state.viewMode === 'builder') {
         html += renderBuilderScheduleView(trip);
+    } else if (state.viewMode === 'map') {
+        html += renderRouteMapView(trip);
     } else if (state.viewMode === 'calendar') {
         html += renderCalendarGridView(trip);
     } else if (state.viewMode === 'timeline') {
@@ -702,7 +772,7 @@ function switchItineraryView(mode) {
     renderItineraryBuilder();
 }
 
-// ================= Builder Sub-View: Stops Rail + Day Schedule =================
+// ================= Builder Sub-View: Connected Vertical Timeline & Stays =================
 function renderBuilderScheduleView(trip) {
     const stops = trip.stops || [];
     const activities = trip.activities || [];
@@ -712,128 +782,92 @@ function renderBuilderScheduleView(trip) {
 
     let html = ``;
 
-    // 1. Trip Health & Diagnostics Widget
+    // 1. Trip Health Circular Diagnostics Panel
     if (health) {
-        let badgeColor = 'emerald';
-        if (health.health_score < 60) badgeColor = 'rose';
-        else if (health.health_score < 80) badgeColor = 'amber';
-
         const bk = health.breakdown || {};
         html += `
             <div class="trip-health-card">
-                <div class="health-header-row">
-                    <div class="health-score-container">
-                        <div class="health-circle-badge ${badgeColor}">
-                            <span class="health-circle-num">${health.health_score}</span>
-                            <span class="health-circle-label">HEALTH</span>
-                        </div>
-                        <div>
-                            <h3 style="font-size: 1.2rem; margin-bottom: 0.2rem;">
-                                Trip Health Diagnostics: <span style="color: var(--primary);">${escapeHtml(health.verdict || 'Good Balance')}</span>
-                            </h3>
-                            <div style="font-size: 0.85rem; color: var(--text-muted);">
-                                Multi-factor intelligence score evaluating budget discipline, pacing, daily density, and accommodation coverage.
-                            </div>
-                        </div>
+                <div class="trip-health-circle-wrap">
+                    <div class="trip-health-score-circle">
+                        <span class="trip-health-score-val">${health.health_score}</span>
+                        <span class="trip-health-score-label">HEALTH / 100</span>
                     </div>
                 </div>
+                <div>
+                    <h3 class="editorial-masthead" style="font-size: 1.4rem; color: #FFFFFF; margin-bottom: 0.35rem;">
+                        Trip Health: <span style="color: var(--primary);">${escapeHtml(health.verdict || 'Balanced Itinerary')}</span>
+                    </h3>
+                    <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 1rem; line-height: 1.5;">
+                        Multi-factor diagnostic evaluation tracking budget discipline, daily activity load, dwell pacing, and hotel booking coverage.
+                    </p>
 
-                <div class="health-dimensions-grid">
-                    <div class="health-dim-item">
-                        <div class="health-dim-top">
-                            <span>Budget Discipline</span>
-                            <span>${bk.budget_health || 25}/30</span>
+                    <div class="trip-health-checks">
+                        <div class="health-check-item">
+                            <i class="fa-solid fa-circle-check check"></i>
+                            <span>Budget Discipline: ${bk.budget_health || 25}/30 pts &bull; Activity Density: ${bk.activity_load || 20}/25 pts</span>
                         </div>
-                        <div class="health-dim-track"><div class="health-dim-fill" style="width: ${((bk.budget_health || 25)/30)*100}%;"></div></div>
-                    </div>
-                    <div class="health-dim-item">
-                        <div class="health-dim-top">
-                            <span>Activity Density</span>
-                            <span>${bk.activity_load || 20}/25</span>
+                        <div class="health-check-item">
+                            <i class="fa-solid fa-circle-check check"></i>
+                            <span>City Dwell Pacing: ${bk.city_pacing || 18}/20 pts &bull; Hotel Coverage: ${bk.hotel_coverage || 10}/15 pts</span>
                         </div>
-                        <div class="health-dim-track"><div class="health-dim-fill" style="width: ${((bk.activity_load || 20)/25)*100}%;"></div></div>
                     </div>
-                    <div class="health-dim-item">
-                        <div class="health-dim-top">
-                            <span>City Dwell Pacing</span>
-                            <span>${bk.city_pacing || 18}/20</span>
-                        </div>
-                        <div class="health-dim-track"><div class="health-dim-fill" style="width: ${((bk.city_pacing || 18)/20)*100}%;"></div></div>
-                    </div>
-                    <div class="health-dim-item">
-                        <div class="health-dim-top">
-                            <span>Hotel Coverage</span>
-                            <span>${bk.hotel_coverage || 10}/15</span>
-                        </div>
-                        <div class="health-dim-track"><div class="health-dim-fill" style="width: ${((bk.hotel_coverage || 10)/15)*100}%;"></div></div>
-                    </div>
-                    <div class="health-dim-item">
-                        <div class="health-dim-top">
-                            <span>Completeness</span>
-                            <span>${bk.completeness || 8}/10</span>
-                        </div>
-                        <div class="health-dim-track"><div class="health-dim-fill" style="width: ${((bk.completeness || 8)/10)*100}%;"></div></div>
-                    </div>
-                </div>
 
-                ${(health.actionable_recommendations && health.actionable_recommendations.length > 0) ? `
-                    <div class="health-recs-box">
-                        ${health.actionable_recommendations.map(rec => `
-                            <div class="health-rec-item">
-                                <div class="health-rec-text">
-                                    <i class="fa-solid fa-lightbulb" style="margin-right: 0.4rem;"></i>
-                                    ${escapeHtml(rec.message)}
+                    ${(health.actionable_recommendations && health.actionable_recommendations.length > 0) ? `
+                        <div style="margin-top: 1.25rem; display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                            ${health.actionable_recommendations.map(rec => `
+                                <div style="display: inline-flex; align-items: center; gap: 0.6rem; background: var(--bg-darker); border: 1px solid var(--border-glow); padding: 0.4rem 0.85rem; border-radius: var(--radius-full); font-size: 0.82rem;">
+                                    <i class="fa-solid fa-lightbulb" style="color: var(--accent);"></i>
+                                    <span>${escapeHtml(rec.message)}</span>
+                                    ${rec.action === 'balance_activities' ? `<button class="btn btn-primary btn-sm" style="padding: 0.2rem 0.6rem; font-size: 0.75rem;" onclick="handleAcceptBalancing(${trip.id})">⚡ Balance</button>` : ''}
                                 </div>
-                                ${rec.action === 'find_hotels' ? `
-                                    <button class="btn btn-outline btn-sm" onclick="switchItineraryView('builder')">Browse Hotels</button>
-                                ` : (rec.action === 'balance_activities' ? `
-                                    <button class="btn btn-accent btn-sm" onclick="handleAcceptBalancing(${trip.id})">⚡ Balance</button>
-                                ` : '')}
-                            </div>
-                        `).join('')}
-                    </div>
-                ` : ''}
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                </div>
             </div>
         `;
     }
 
-    // 2. Smart Itinerary Balancing Assistant Card
+    // 2. Smart Itinerary Balancing Assistant
     if (balancing && balancing.length > 0) {
         html += `
-            <div class="balancing-assistant-card">
+            <div style="background: linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(245, 158, 11, 0.1) 100%); border: 1px solid var(--border-glow); border-radius: var(--radius-xl); padding: 1.25rem 1.75rem; margin-bottom: 2rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
                 <div style="display: flex; align-items: center; gap: 1rem;">
-                    <div class="balancing-icon"><i class="fa-solid fa-scale-balanced"></i></div>
-                    <div class="balancing-content">
-                        <h4>Smart Itinerary Balancing Assistant</h4>
-                        <p>${escapeHtml(balancing[0].reason)}</p>
+                    <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; box-shadow: var(--shadow-glow);">
+                        <i class="fa-solid fa-scale-balanced"></i>
+                    </div>
+                    <div>
+                        <h4 style="font-size: 1.1rem; color: #FFFFFF; margin-bottom: 0.2rem;">Smart Itinerary Balancing Recommendation</h4>
+                        <p style="font-size: 0.88rem; color: var(--sand-subtle);">${escapeHtml(balancing[0].reason)}</p>
                     </div>
                 </div>
-                <button class="btn btn-primary btn-glow" onclick="handleAcceptBalancing(${trip.id})">
+                <button class="btn btn-primary" onclick="handleAcceptBalancing(${trip.id})">
                     <i class="fa-solid fa-bolt"></i> <span>Accept Suggestion</span>
                 </button>
             </div>
         `;
     }
 
+    // 3. Multi-City Route Sequence Rail
     html += `
-        <!-- Multi-City Stops Rail -->
-        <div class="stops-rail-container">
-            <div class="stops-rail-header">
+        <div class="route-map-panel">
+            <div class="editorial-section-header" style="margin-bottom: 1rem;">
                 <div>
-                    <h3 style="font-size: 1.15rem;"><i class="fa-solid fa-map-location-dot" style="color: var(--primary);"></i> Multi-City Route Sequence</h3>
-                    <p style="font-size: 0.82rem; color: var(--text-muted);">Reorder stops to optimize travel route and manage city accommodations.</p>
+                    <h3 class="editorial-section-title"><i class="fa-solid fa-map-location-dot"></i> Multi-City Route Sequence</h3>
+                    <div class="editorial-section-sub">Reorder stops to optimize travel route and manage city accommodations</div>
                 </div>
                 <button class="btn btn-outline btn-sm" onclick="openAddStopModal(${trip.id})">
                     <i class="fa-solid fa-plus"></i> Add Destination
                 </button>
             </div>
-            <div class="stops-scroll-track">
+
+            <div class="route-flow-container">
     `;
 
     if (stops.length === 0) {
         html += `
-            <div style="padding: 1.5rem; text-align: center; width: 100%; color: var(--text-muted);">
-                <i class="fa-solid fa-location-dot" style="font-size: 1.5rem; margin-bottom: 0.5rem; color: var(--accent);"></i>
+            <div style="padding: 2rem; text-align: center; width: 100%; color: var(--text-muted);">
+                <i class="fa-solid fa-location-dot" style="font-size: 2rem; margin-bottom: 0.5rem; color: var(--primary);"></i>
                 <div>No destination stops added yet. Click <strong>+ Add Destination</strong> to start building your route.</div>
             </div>
         `;
@@ -841,26 +875,43 @@ function renderBuilderScheduleView(trip) {
         stops.forEach((stop, index) => {
             const hasHotel = Boolean(stop.hotel_booking);
             html += `
-                <div class="stop-sequence-card">
-                    <span class="stop-seq-badge">${index + 1}</span>
-                    <div class="stop-city-name">${escapeHtml(stop.city_name)}, ${escapeHtml(stop.country_name)}</div>
-                    <div class="stop-dates-text">
+                <div class="route-flow-stop-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span class="route-stop-seq">${index + 1}</span>
+                        <div style="display: flex; gap: 0.25rem;">
+                            <button class="btn btn-subtle btn-sm" style="padding: 0.2rem 0.45rem;" ${index === 0 ? 'disabled' : ''} onclick="handleMoveStop(${trip.id}, ${index}, -1)" title="Move Left"><i class="fa-solid fa-arrow-left"></i></button>
+                            <button class="btn btn-subtle btn-sm" style="padding: 0.2rem 0.45rem;" ${index === stops.length - 1 ? 'disabled' : ''} onclick="handleMoveStop(${trip.id}, ${index}, 1)" title="Move Right"><i class="fa-solid fa-arrow-right"></i></button>
+                            <button class="btn btn-subtle btn-sm" style="padding: 0.2rem 0.45rem; color: #F87171;" onclick="handleDeleteStop(${trip.id}, ${stop.id})" title="Remove"><i class="fa-regular fa-trash-can"></i></button>
+                        </div>
+                    </div>
+
+                    <div style="font-family: var(--font-editorial); font-size: 1.15rem; font-weight: 800; text-transform: uppercase; color: #FFFFFF;">
+                        ${escapeHtml(stop.city_name)}
+                    </div>
+                    <div style="font-size: 0.78rem; color: var(--sand-subtle); display: flex; align-items: center; gap: 0.4rem;">
                         <i class="fa-regular fa-calendar"></i> ${formatDateRange(stop.arrival_date, stop.departure_date)} (${stop.duration_days}d)
                     </div>
-                    <div style="font-size: 0.78rem; margin: 0.35rem 0; padding: 0.2rem 0.4rem; background: ${hasHotel ? '#F0FDF4' : '#FAF5FF'}; border-radius: var(--radius-sm); color: ${hasHotel ? '#166534' : '#6B21A8'}; font-weight: 600;">
-                        ${hasHotel ? `<i class="fa-solid fa-hotel"></i> ${escapeHtml(stop.hotel_booking.hotel_name.substring(0, 18))}...` : `<i class="fa-solid fa-bed"></i> No Hotel Booked`}
-                    </div>
-                    <div class="stop-card-controls">
-                        <div style="display: flex; gap: 0.25rem;">
-                            <button class="btn btn-subtle btn-sm" ${index === 0 ? 'disabled' : ''} onclick="handleMoveStop(${trip.id}, ${index}, -1)" title="Move Left"><i class="fa-solid fa-arrow-left"></i></button>
-                            <button class="btn btn-subtle btn-sm" ${index === stops.length - 1 ? 'disabled' : ''} onclick="handleMoveStop(${trip.id}, ${index}, 1)" title="Move Right"><i class="fa-solid fa-arrow-right"></i></button>
-                        </div>
-                        <button class="btn btn-danger-outline btn-sm" onclick="handleDeleteStop(${trip.id}, ${stop.id})" title="Remove City"><i class="fa-regular fa-trash-can"></i></button>
+
+                    <div style="margin-top: 0.5rem;">
+                        ${hasHotel ? `
+                            <span class="section-badge hotel" style="font-size: 0.72rem;">
+                                <i class="fa-solid fa-hotel"></i> ${escapeHtml(stop.hotel_booking.hotel_name.substring(0, 16))}...
+                            </span>
+                        ` : `
+                            <button class="btn btn-outline btn-sm" style="width: 100%; font-size: 0.75rem; padding: 0.3rem;" onclick="openHotelSearchModal(${stop.id}, ${stop.city_id}, '${escapeHtml(stop.city_name)}', '${stop.arrival_date}', '${stop.departure_date}')">
+                                <i class="fa-solid fa-bed"></i> Find Hotel
+                            </button>
+                        `}
                     </div>
                 </div>
             `;
             if (index < stops.length - 1) {
-                html += `<div class="stop-arrow-connector"><i class="fa-solid fa-arrow-right-long"></i></div>`;
+                html += `
+                    <div class="route-flow-arrow">
+                        <i class="fa-solid fa-arrow-right-long"></i>
+                        <span>Transit</span>
+                    </div>
+                `;
             }
         });
     }
@@ -869,59 +920,57 @@ function renderBuilderScheduleView(trip) {
             </div>
         </div>
 
-        <!-- City Accommodations & Hotels Section -->
+        <!-- Destination Accommodations & Stays -->
         ${stops.length > 0 ? `
-            <div style="margin-bottom: 2rem;">
-                <div class="section-header" style="margin-bottom: 1rem;">
+            <div style="margin-bottom: 3rem;">
+                <div class="editorial-section-header">
                     <div>
-                        <h3 style="font-size: 1.2rem; display: flex; align-items: center; gap: 0.5rem;">
-                            <i class="fa-solid fa-hotel" style="color: var(--primary);"></i> Destination Accommodations &amp; Stays
-                        </h3>
-                        <p style="font-size: 0.85rem; color: var(--text-muted);">Smart recommendations tailored to your itinerary dates, group size, and remaining budget.</p>
+                        <h3 class="editorial-section-title"><i class="fa-solid fa-hotel"></i> Destination Accommodations &amp; Stays</h3>
+                        <div class="editorial-section-sub">Smart recommendations with 0–100 match scores and synchronized budgets</div>
                     </div>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+
+                <div class="hotel-cards-grid">
                     ${stops.map(stop => {
                         if (stop.hotel_booking) {
                             const hb = stop.hotel_booking;
                             return `
-                                <div class="stop-accommodation-card">
-                                    <div class="stop-hotel-left">
-                                        <img src="${hb.hotel_image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=400&q=80'}" class="stop-hotel-thumb" alt="${escapeHtml(hb.hotel_name)}">
-                                        <div class="stop-hotel-info">
-                                            <h4>
-                                                 <i class="fa-solid fa-hotel" style="color: var(--primary);"></i>
-                                                ${escapeHtml(hb.hotel_name)}
-                                                <span class="hotel-category-badge" style="position:static; margin-left: 0.4rem; padding: 0.15rem 0.5rem;">${escapeHtml((hb.hotel_category || 'hotel').replace('_', '-'))}</span>
-                                            </h4>
-                                            <div class="stop-hotel-meta">
-                                                <span><i class="fa-solid fa-location-dot"></i> ${escapeHtml(stop.city_name)}</span>
-                                                <span><i class="fa-solid fa-star" style="color: #F59E0B;"></i> ${hb.hotel_rating || 4.5}/5.0</span>
-                                                <span><i class="fa-regular fa-calendar"></i> ${hb.number_of_nights} Nights (${formatDateRange(hb.check_in, hb.check_out)})</span>
-                                                <span><i class="fa-solid fa-door-open"></i> ${hb.number_of_rooms || 1} Room · ${hb.number_of_guests || 2} Guests</span>
-                                            </div>
-                                        </div>
+                                <div class="hotel-editorial-card">
+                                    <div class="hotel-card-image-wrap">
+                                        <img src="${hb.hotel_image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=600&q=80'}" alt="${escapeHtml(hb.hotel_name)}">
+                                        <span class="hotel-match-ring">
+                                            <i class="fa-solid fa-star"></i> ${hb.hotel_rating || 4.5}/5.0
+                                        </span>
                                     </div>
-                                    <div class="stop-hotel-right">
-                                        <div>
-                                            <div class="stop-hotel-cost">${formatCurrency(hb.total_cost, trip.currency)}</div>
-                                            <div class="stop-hotel-nights">${formatCurrency(hb.price_per_night, trip.currency)} / night</div>
+                                    <div class="hotel-card-body">
+                                        <div class="hotel-card-name">${escapeHtml(hb.hotel_name)}</div>
+                                        <div class="hotel-distance-tag">
+                                            <i class="fa-solid fa-location-dot" style="color: var(--primary);"></i> ${escapeHtml(stop.city_name)} &bull; ${hb.number_of_nights} Nights (${formatDateRange(hb.check_in, hb.check_out)})
                                         </div>
-                                        <div style="display: flex; gap: 0.35rem;">
-                                            <button class="btn btn-subtle btn-sm" onclick="openEditHotelModal(${hb.id})" title="Edit Dates/Rooms"><i class="fa-solid fa-pen"></i></button>
-                                            <button class="btn btn-outline btn-sm" onclick="openHotelSearchModal(${stop.id}, ${stop.city_id}, '${escapeHtml(stop.city_name)}', '${stop.arrival_date}', '${stop.departure_date}')" title="Change Hotel">Change</button>
-                                            <button class="btn btn-danger-outline btn-sm" onclick="handleDeleteHotelBooking(${hb.id})" title="Remove Hotel"><i class="fa-regular fa-trash-can"></i></button>
+                                        <div class="hotel-amenities-row">
+                                            <span class="amenity-chip"><i class="fa-solid fa-door-open"></i> ${hb.number_of_rooms || 1} Room</span>
+                                            <span class="amenity-chip"><i class="fa-solid fa-users"></i> ${hb.number_of_guests || 2} Guests</span>
+                                            <span class="amenity-chip">${escapeHtml((hb.hotel_category || 'hotel').toUpperCase())}</span>
+                                        </div>
+                                        <div class="hotel-card-price-row">
+                                            <div class="hotel-price-tag">${formatCurrency(hb.total_cost, trip.currency)} <span>total</span></div>
+                                            <div style="display: flex; gap: 0.35rem;">
+                                                <button class="btn btn-subtle btn-sm" onclick="openEditHotelModal(${hb.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                                                <button class="btn btn-outline btn-sm" onclick="openHotelSearchModal(${stop.id}, ${stop.city_id}, '${escapeHtml(stop.city_name)}', '${stop.arrival_date}', '${stop.departure_date}')">Change</button>
+                                                <button class="btn btn-subtle btn-sm" style="color: #F87171;" onclick="handleDeleteHotelBooking(${hb.id})" title="Remove"><i class="fa-regular fa-trash-can"></i></button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             `;
                         } else {
                             return `
-                                <div class="no-hotel-cta" onclick="openHotelSearchModal(${stop.id}, ${stop.city_id}, '${escapeHtml(stop.city_name)}', '${stop.arrival_date}', '${stop.departure_date}')">
-                                    <div class="no-hotel-cta-text">
+                                <div class="hotel-editorial-card" style="border-style: dashed; justify-content: center; align-items: center; padding: 2.5rem; text-align: center; cursor: pointer; min-height: 220px;" onclick="openHotelSearchModal(${stop.id}, ${stop.city_id}, '${escapeHtml(stop.city_name)}', '${stop.arrival_date}', '${stop.departure_date}')">
+                                    <div style="width: 48px; height: 48px; border-radius: 50%; background: var(--bg-surface-elevated); border: 1px solid var(--border-glow); display: flex; align-items: center; justify-content: center; color: var(--primary); font-size: 1.3rem; margin-bottom: 0.85rem;">
                                         <i class="fa-solid fa-bed"></i>
-                                        <span>No hotel selected for <strong>${escapeHtml(stop.city_name)}</strong> (${formatDateRange(stop.arrival_date, stop.departure_date)}, ${stop.duration_days} nights)</span>
                                     </div>
+                                    <h4 class="editorial-masthead" style="font-size: 1.1rem; margin-bottom: 0.35rem; color: #FFFFFF;">${escapeHtml(stop.city_name)}</h4>
+                                    <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1.25rem;">No hotel selected (${stop.duration_days} nights)</p>
                                     <button class="btn btn-primary btn-sm">
                                         <i class="fa-solid fa-magnifying-glass"></i> Find Recommended Hotels
                                     </button>
@@ -933,13 +982,19 @@ function renderBuilderScheduleView(trip) {
             </div>
         ` : ''}
 
-        <!-- Day-Wise Schedule Blocks -->
-        <div class="section-header">
-            <h2 class="section-title"><i class="fa-solid fa-calendar-check" style="color: var(--primary);"></i> Day-Wise Schedule &amp; Activity Sections</h2>
+        <!-- Connected Day-by-Day Travel Timeline -->
+        <div class="editorial-section-header">
+            <div>
+                <h2 class="editorial-section-title"><i class="fa-solid fa-calendar-check"></i> Connected Travel Timeline</h2>
+                <div class="editorial-section-sub">Chronological itinerary sequence with 7 section categories and location details</div>
+            </div>
         </div>
+
+        <div class="timeline-container">
+            <div class="timeline-glow-line"></div>
     `;
 
-    // Generate day blocks
+    // Generate connected day blocks
     for (let dayNum = 1; dayNum <= durationDays; dayNum++) {
         let dayDateStr = '';
         try {
@@ -952,57 +1007,60 @@ function renderBuilderScheduleView(trip) {
         const dayCost = dayActivities.reduce((sum, a) => sum + Number(a.estimated_cost || 0), 0);
 
         html += `
-            <div class="day-schedule-block">
-                <div class="day-header">
-                    <div class="day-header-left">
-                        <span class="day-pill">DAY ${dayNum}</span>
-                        <div class="day-title-text">${dayDateStr}</div>
+            <div class="timeline-day-block">
+                <div class="timeline-day-node">${dayNum}</div>
+                <div class="timeline-day-header">
+                    <div>
+                        <span class="timeline-day-title">DAY ${dayNum} &bull; ${dayDateStr}</span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 1rem;">
-                        <span style="font-weight: 700; font-size: 0.95rem; color: var(--text-muted);">
-                            Daily Est: ${formatCurrency(dayCost, trip.currency)}
+                        <span style="font-weight: 700; font-size: 0.9rem; color: var(--sand-subtle);">
+                            Est: ${formatCurrency(dayCost, trip.currency)}
                         </span>
                         <button class="btn btn-primary btn-sm" onclick="openAddActivityModal(${trip.id}, ${dayNum})">
                             <i class="fa-solid fa-plus"></i> Add Section
                         </button>
                     </div>
                 </div>
-                <div class="day-activities-list">
+
+                <div class="timeline-events-list">
         `;
 
         if (dayActivities.length === 0) {
             html += `
-                <div style="padding: 1.25rem; text-align: center; color: var(--text-muted); background: var(--bg-main); border-radius: var(--radius-md);">
-                    <span>No activities scheduled for Day ${dayNum}. Click <strong>+ Add Section</strong> to add sightseeing, transport, dining, or custom items.</span>
+                <div style="padding: 1.5rem; text-align: center; color: var(--text-muted); background: var(--bg-surface); border: 1px dashed var(--border-subtle); border-radius: var(--radius-md);">
+                    <span>Free exploration or transit day. Click <strong>+ Add Section</strong> to schedule activities, food, or transport.</span>
                 </div>
             `;
         } else {
             dayActivities.forEach(act => {
                 const secType = act.section_type || 'activity';
                 html += `
-                    <div class="activity-item-card">
-                        <div class="act-left-block">
-                            <div class="act-time-badge">${escapeHtml(act.scheduled_time || '10:00')}</div>
-                            <div class="act-details">
-                                <div style="display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;">
-                                    <span class="act-name">${escapeHtml(act.name)}</span>
-                                    <span class="section-type-badge ${secType}">${secType}</span>
+                    <div class="timeline-event-card">
+                        <div style="display: flex; align-items: center; gap: 1rem; flex: 1;">
+                            <div class="timeline-time-badge">${escapeHtml(act.scheduled_time || '10:00')}</div>
+                            <div class="timeline-event-info">
+                                <div class="timeline-event-title">
+                                    <span>${escapeHtml(act.name)}</span>
+                                    <span class="section-badge ${secType}">${secType}</span>
                                 </div>
-                                <div class="act-meta-tags">
-                                    <span class="category-tag ${act.category || 'sightseeing'}">${escapeHtml(act.category || 'sightseeing')}</span>
+                                <div class="timeline-event-meta">
                                     <span><i class="fa-regular fa-clock"></i> ${act.duration_hours || 2}h</span>
-                                    ${act.city_name ? `<span><i class="fa-solid fa-location-dot"></i> ${escapeHtml(act.city_name)}</span>` : ''}
-                                    ${act.location_address ? `<span><i class="fa-solid fa-map-pin"></i> ${escapeHtml(act.location_address)}</span>` : ''}
+                                    ${act.city_name ? `<span><i class="fa-solid fa-location-dot" style="color: var(--primary);"></i> ${escapeHtml(act.city_name)}</span>` : ''}
+                                    ${act.location_address ? `<span><i class="fa-solid fa-map-pin" style="color: var(--accent);"></i> ${escapeHtml(act.location_address)}</span>` : ''}
                                 </div>
                             </div>
                         </div>
+
                         <div style="display: flex; align-items: center; gap: 1.25rem;">
-                            <div class="act-cost-badge">${formatCurrency(act.estimated_cost, trip.currency)}</div>
+                            <div style="font-family: var(--font-heading); font-weight: 800; font-size: 1.05rem; color: #FFFFFF;">
+                                ${formatCurrency(act.estimated_cost, trip.currency)}
+                            </div>
                             <div style="display: flex; gap: 0.35rem;">
-                                <button class="btn btn-subtle btn-sm" onclick="openMoveActivityModal(${trip.id}, ${act.id}, ${dayNum}, ${durationDays})" title="Move to another Day"><i class="fa-solid fa-arrow-right-arrow-left"></i></button>
+                                <button class="btn btn-subtle btn-sm" onclick="openMoveActivityModal(${trip.id}, ${act.id}, ${dayNum}, ${durationDays})" title="Move Day"><i class="fa-solid fa-arrow-right-arrow-left"></i></button>
                                 <button class="btn btn-subtle btn-sm" onclick="handleDuplicateActivity(${trip.id}, ${act.id})" title="Duplicate"><i class="fa-regular fa-clone"></i></button>
                                 <button class="btn btn-subtle btn-sm" onclick="openEditActivityModal(${trip.id}, ${act.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
-                                <button class="btn btn-danger-outline btn-sm" onclick="handleDeleteActivity(${trip.id}, ${act.id})" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
+                                <button class="btn btn-subtle btn-sm" style="color: #F87171;" onclick="handleDeleteActivity(${trip.id}, ${act.id})" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
                             </div>
                         </div>
                     </div>
@@ -1016,10 +1074,63 @@ function renderBuilderScheduleView(trip) {
         `;
     }
 
+    html += `</div>`;
     return html;
 }
 
-// ================= Builder Sub-View: Budget & Intelligence Engine =================
+// ================= Dedicated Route & Map Experience Sub-View =================
+function renderRouteMapView(trip) {
+    const stops = trip.stops || [];
+    let html = `
+        <div class="route-map-panel">
+            <div class="editorial-section-header">
+                <div>
+                    <h2 class="editorial-section-title"><i class="fa-solid fa-map-location-dot"></i> Route Flow &amp; Transit Canvas</h2>
+                    <div class="editorial-section-sub">Visual topology connecting all stops, hotel bases, and transit vectors</div>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="openAddStopModal(${trip.id})"><i class="fa-solid fa-plus"></i> Add Destination</button>
+            </div>
+
+            <div style="background: var(--bg-darker); border: 1px solid var(--border-card); border-radius: var(--radius-xl); padding: 2.5rem; margin-bottom: 2rem; position: relative;">
+                <div style="font-family: var(--font-editorial); font-size: 1.1rem; color: var(--sand-cream); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 2rem;">
+                    <i class="fa-solid fa-route" style="color: var(--primary);"></i> Journey Route Blueprint (${stops.length} Cities)
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 2rem;">
+                    ${stops.map((stop, idx) => `
+                        <div style="display: flex; align-items: flex-start; gap: 1.5rem;">
+                            <div style="width: 36px; height: 36px; border-radius: 50%; background: var(--primary-gradient); color: #FFFFFF; font-weight: 800; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-glow); flex-shrink: 0;">
+                                ${idx + 1}
+                            </div>
+                            <div style="flex: 1; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <h3 style="font-family: var(--font-editorial); font-size: 1.35rem; color: #FFFFFF; text-transform: uppercase;">
+                                        ${escapeHtml(stop.city_name)}, ${escapeHtml(stop.country_name)}
+                                    </h3>
+                                    <span class="journey-badge-top-left" style="position: static;">
+                                        ${stop.duration_days} Nights (${formatDateRange(stop.arrival_date, stop.departure_date)})
+                                    </span>
+                                </div>
+                                <div style="font-size: 0.88rem; color: var(--text-muted); display: flex; gap: 1.5rem; flex-wrap: wrap;">
+                                    <span><i class="fa-solid fa-hotel" style="color: var(--accent);"></i> Stay: ${stop.hotel_booking ? escapeHtml(stop.hotel_booking.hotel_name) : 'No Hotel Selected'}</span>
+                                    <span><i class="fa-solid fa-ticket" style="color: #38BDF8;"></i> Activities: ${(trip.activities || []).filter(a => a.city_name === stop.city_name).length} Scheduled</span>
+                                </div>
+                            </div>
+                        </div>
+                        ${idx < stops.length - 1 ? `
+                            <div style="margin-left: 17px; padding-left: 2rem; border-left: 2px dashed var(--primary); color: var(--primary); font-size: 0.85rem; font-weight: 700; text-transform: uppercase;">
+                                <i class="fa-solid fa-plane-departure" style="margin-right: 0.4rem;"></i> Transit to next destination &bull; Optimal Connection
+                            </div>
+                        ` : ''}
+                    `).join('')}
+                </div>
+            </div>
+        </div>
+    `;
+    return html;
+}
+
+// ================= Builder Sub-View: Budget & Financial Intelligence Panel =================
 function renderBudgetAndIntelligenceView(trip) {
     const bd = trip.category_breakdown || {};
     const alerts = trip.budget_intelligence_alerts || [];
@@ -1028,134 +1139,64 @@ function renderBudgetAndIntelligenceView(trip) {
     const util = trip.budget_utilization || 0;
 
     let html = `
-        <!-- Travel Balance Score Gauge -->
-        <div class="balance-score-container">
-            <div class="score-gauge-box" style="--score-pct: ${trip.trip_balance_score || 80};">
-                <span class="score-number">${trip.trip_balance_score || 80}</span>
-                <span class="score-max">OUT OF 100</span>
-            </div>
-            <div style="flex: 1;">
-                <h2 style="color: #fff; margin-bottom: 0.35rem; font-size: 1.6rem;">Trip Balance &amp; Pacing Score</h2>
-                <p style="color: #C7D2FE; font-size: 0.9rem; margin-bottom: 1.25rem;">
-                    Our transparent rating engine evaluates budget alignment, activity density, city dwell time, and logistic completeness.
-                </p>
-                <div class="score-factors-grid">
-    `;
-
-    factors.forEach(f => {
-        html += `
-            <div class="factor-item">
-                <div class="factor-header">
-                    <span>${escapeHtml(f.name)}</span>
-                    <span style="color: #FDBA74;">${f.score}/${f.max}</span>
-                </div>
-                <div class="factor-desc">${escapeHtml(f.description)}</div>
-            </div>
-        `;
-    });
-
-    html += `
-                </div>
-            </div>
-        </div>
-
-        <!-- Budget & Financial Intelligence Panel -->
-        <div class="budget-intelligence-panel">
-            <div class="section-header">
+        <div class="budget-analytics-panel">
+            <div class="editorial-section-header">
                 <div>
-                    <h2 class="section-title"><i class="fa-solid fa-calculator" style="color: var(--primary);"></i> Dynamic Budget Intelligence Engine</h2>
-                    <p style="font-size: 0.85rem; color: var(--text-muted);">Real-time cost rollup across activities, accommodations, flights, and logistics.</p>
+                    <h2 class="editorial-section-title"><i class="fa-solid fa-calculator"></i> Dynamic Budget &amp; Intelligence</h2>
+                    <div class="editorial-section-sub">Real-time cost rollup across activities, accommodations, flights, and logistics</div>
                 </div>
                 <button class="btn btn-primary btn-sm" onclick="openAddExpenseModal(${trip.id})">
-                    <i class="fa-solid fa-receipt"></i> + Add Expense Item
+                    <i class="fa-solid fa-receipt"></i> + Add Expense
                 </button>
             </div>
 
-            <!-- Financial KPIs -->
-            <div class="budget-stats-grid">
-                <div class="budget-metric-box">
-                    <div class="label">Target Budget</div>
-                    <div class="value" style="color: var(--primary);">${formatCurrency(trip.total_budget, trip.currency)}</div>
+            <!-- Financial Command KPIs -->
+            <div class="budget-hero-numbers">
+                <div class="budget-stat-box">
+                    <span class="budget-stat-label">Target Budget</span>
+                    <span class="budget-stat-amount primary">${formatCurrency(trip.total_budget, trip.currency)}</span>
                 </div>
-                <div class="budget-metric-box">
-                    <div class="label">Total Estimated</div>
-                    <div class="value" style="color: ${trip.total_estimated_cost > trip.total_budget ? 'var(--danger)' : 'var(--text-main)'};">${formatCurrency(trip.total_estimated_cost, trip.currency)}</div>
+                <div class="budget-stat-box">
+                    <span class="budget-stat-label">Total Estimated</span>
+                    <span class="budget-stat-amount ${trip.total_estimated_cost > trip.total_budget ? 'amber' : ''}">${formatCurrency(trip.total_estimated_cost, trip.currency)}</span>
                 </div>
-                <div class="budget-metric-box">
-                    <div class="label">Remaining Budget</div>
-                    <div class="value" style="color: ${trip.remaining_budget < 0 ? 'var(--danger)' : 'var(--success)'};">${formatCurrency(trip.remaining_budget, trip.currency)}</div>
+                <div class="budget-stat-box">
+                    <span class="budget-stat-label">Remaining Balance</span>
+                    <span class="budget-stat-amount emerald">${formatCurrency(trip.remaining_budget, trip.currency)}</span>
                 </div>
-                <div class="budget-metric-box">
-                    <div class="label">Per Traveler</div>
-                    <div class="value">${formatCurrency(trip.cost_per_traveler, trip.currency)}</div>
-                </div>
-                <div class="budget-metric-box">
-                    <div class="label">Per Day</div>
-                    <div class="value">${formatCurrency(trip.cost_per_day, trip.currency)}</div>
-                </div>
-                <div class="budget-metric-box">
-                    <div class="label">Utilization</div>
-                    <div class="value" style="color: ${util > 100 ? 'var(--danger)' : 'var(--accent)'};">${util.toFixed(0)}%</div>
+                <div class="budget-stat-box">
+                    <span class="budget-stat-label">Per Traveler (${trip.travelers_count} Pax)</span>
+                    <span class="budget-stat-amount">${formatCurrency(trip.cost_per_traveler, trip.currency)}</span>
                 </div>
             </div>
 
-            <!-- Rule-Based Intelligence Alerts -->
-            <div style="margin-bottom: 2rem;">
-                <h4 style="margin-bottom: 0.75rem; font-size: 1.05rem;">Intelligence Insights &amp; Pacing Warnings</h4>
-    `;
-
-    if (alerts.length === 0) {
-        html += `
-            <div class="intelligence-alert success">
-                <i class="fa-solid fa-circle-check"></i>
-                <div><strong>Healthy Itinerary:</strong> Your schedule and expenses are currently balanced and within budget parameters.</div>
-            </div>
-        `;
-    } else {
-        alerts.forEach(a => {
-            let icon = 'fa-circle-info';
-            if (a.type === 'warning') icon = 'fa-triangle-exclamation';
-            if (a.type === 'success') icon = 'fa-circle-check';
-
-            html += `
-                <div class="intelligence-alert ${a.type}">
-                    <i class="fa-solid ${icon}"></i>
-                    <div>
-                        <strong>${escapeHtml(a.title)}:</strong> ${escapeHtml(a.message)}
-                    </div>
-                </div>
-            `;
-        });
-    }
-
-    html += `
-            </div>
-
-            <!-- Category Cost Breakdown -->
-            <div style="margin-bottom: 2rem;">
-                <h4 style="margin-bottom: 1rem; font-size: 1.05rem;">Cost Allocation by Category</h4>
-                <div style="display: flex; flex-direction: column; gap: 0.85rem;">
+            <!-- Category Cost Allocation Progress Bars -->
+            <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 2rem;">
+                <h4 style="font-size: 1.05rem; font-family: var(--font-editorial); color: #FFFFFF; text-transform: uppercase; margin-bottom: 1.25rem;">
+                    <i class="fa-solid fa-chart-pie" style="color: var(--primary);"></i> Cost Allocation by Category
+                </h4>
+                <div class="budget-category-bars">
     `;
 
     const totalCost = trip.total_estimated_cost || 1;
     const catList = [
-        { key: 'activities', label: 'Activities & Experiences', icon: 'fa-ticket', color: '#4F46E5', amount: bd.activities || 0 },
+        { key: 'activities', label: 'Activities & Experiences', icon: 'fa-ticket', color: '#38BDF8', amount: bd.activities || 0 },
         { key: 'accommodation', label: 'Accommodation & Lodging', icon: 'fa-hotel', color: '#F97316', amount: bd.accommodation || 0 },
-        { key: 'transportation', label: 'Transportation & Flights', icon: 'fa-plane', color: '#0EA5E9', amount: bd.transportation || 0 },
-        { key: 'food', label: 'Food & Dining', icon: 'fa-utensils', color: '#10B981', amount: bd.food || 0 },
-        { key: 'miscellaneous', label: 'Miscellaneous & Shopping', icon: 'fa-bag-shopping', color: '#8B5CF6', amount: bd.miscellaneous || 0 }
+        { key: 'transportation', label: 'Transportation & Flights', icon: 'fa-plane', color: '#A855F7', amount: bd.transportation || 0 },
+        { key: 'food', label: 'Food & Dining', icon: 'fa-utensils', color: '#EC4899', amount: bd.food || 0 },
+        { key: 'miscellaneous', label: 'Logistics & Shopping', icon: 'fa-bag-shopping', color: '#10B981', amount: bd.miscellaneous || 0 }
     ];
 
     catList.forEach(c => {
         const pct = ((c.amount / totalCost) * 100) || 0;
         html += `
-            <div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.88rem; font-weight: 600; margin-bottom: 0.35rem;">
+            <div class="budget-cat-row">
+                <div class="budget-cat-header">
                     <span><i class="fa-solid ${c.icon}" style="color: ${c.color}; margin-right: 0.4rem;"></i> ${c.label}</span>
-                    <span>${formatCurrency(c.amount, trip.currency)} (${pct.toFixed(0)}%)</span>
+                    <span style="color: #FFFFFF;">${formatCurrency(c.amount, trip.currency)} (${pct.toFixed(0)}%)</span>
                 </div>
-                <div class="progress-bar-track">
-                    <div class="progress-bar-fill" style="width: ${pct}%; background: ${c.color};"></div>
+                <div class="dna-track-bar">
+                    <div class="dna-fill-bar" style="width: ${pct}%; background: ${c.color}; box-shadow: 0 0 8px ${c.color}66;"></div>
                 </div>
             </div>
         `;
@@ -1165,37 +1206,37 @@ function renderBudgetAndIntelligenceView(trip) {
                 </div>
             </div>
 
-            <!-- Expenses List Table -->
+            <!-- Recorded Logistics & Expenses -->
             <div>
-                <div class="section-header">
-                    <h4 style="font-size: 1.05rem;">Recorded Logistics &amp; Expenses</h4>
+                <div class="editorial-section-header" style="margin-bottom: 1rem;">
+                    <h4 style="font-size: 1.05rem; font-family: var(--font-editorial); color: #FFFFFF; text-transform: uppercase;">
+                        <i class="fa-solid fa-receipt" style="color: var(--primary);"></i> Recorded Logistics &amp; Expenses (${expenses.length})
+                    </h4>
                 </div>
     `;
 
     if (expenses.length === 0) {
         html += `
-            <div style="padding: 1.5rem; text-align: center; color: var(--text-muted); background: var(--bg-main); border-radius: var(--radius-md);">
-                No standalone expenses added yet. Click <strong>+ Add Expense Item</strong> to log hotel bookings, flights, and meals.
+            <div style="padding: 2rem; text-align: center; color: var(--text-muted); background: var(--bg-surface-elevated); border: 1px dashed var(--border-subtle); border-radius: var(--radius-md);">
+                No standalone expenses added yet. Click <strong>+ Add Expense</strong> to log flights, meals, and tickets.
             </div>
         `;
     } else {
-        html += `
-            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-        `;
+        html += `<div style="display: flex; flex-direction: column; gap: 0.65rem;">`;
         expenses.forEach(e => {
             html += `
-                <div style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.85rem 1.25rem; display: flex; justify-content: space-between; align-items: center;">
+                <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center;">
                     <div>
-                        <div style="font-weight: 700; font-size: 0.95rem;">${escapeHtml(e.name)}</div>
-                        <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; gap: 0.75rem; margin-top: 0.15rem;">
-                            <span class="category-tag ${e.category}">${escapeHtml(e.category)}</span>
+                        <div style="font-weight: 700; font-size: 0.95rem; color: #FFFFFF;">${escapeHtml(e.name)}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; gap: 0.75rem; margin-top: 0.2rem;">
+                            <span class="section-badge activity">${escapeHtml(e.category)}</span>
                             ${e.date ? `<span><i class="fa-regular fa-calendar"></i> ${e.date}</span>` : ''}
                             ${e.notes ? `<span>${escapeHtml(e.notes)}</span>` : ''}
                         </div>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 1rem;">
-                        <span style="font-family: var(--font-heading); font-weight: 700; font-size: 1.05rem;">${formatCurrency(e.amount, trip.currency)}</span>
-                        <button class="btn btn-danger-outline btn-sm" onclick="handleDeleteExpense(${trip.id}, ${e.id})"><i class="fa-regular fa-trash-can"></i></button>
+                    <div style="display: flex; align-items: center; gap: 1.25rem;">
+                        <span style="font-family: var(--font-heading); font-weight: 800; font-size: 1.15rem; color: #FFFFFF;">${formatCurrency(e.amount, trip.currency)}</span>
+                        <button class="btn btn-subtle btn-sm" style="color: #F87171;" onclick="handleDeleteExpense(${trip.id}, ${e.id})"><i class="fa-regular fa-trash-can"></i></button>
                     </div>
                 </div>
             `;
@@ -1211,20 +1252,20 @@ function renderBudgetAndIntelligenceView(trip) {
     return html;
 }
 
-// ================= Builder Sub-View: Calendar Grid =================
+// ================= Builder Sub-View: Calendar Grid (Command Center) =================
 function renderCalendarGridView(trip) {
     const activities = trip.activities || [];
     const durationDays = trip.duration_days || 1;
 
     let html = `
-        <div class="calendar-view-container">
-            <div class="section-header">
+        <div class="route-map-panel">
+            <div class="editorial-section-header">
                 <div>
-                    <h2 class="section-title"><i class="fa-regular fa-calendar-days" style="color: var(--primary);"></i> Calendar Schedule Grid</h2>
-                    <p style="font-size: 0.85rem; color: var(--text-muted);">Visual day-by-day itinerary mapping.</p>
+                    <h2 class="editorial-section-title"><i class="fa-regular fa-calendar-days"></i> Calendar Schedule Grid</h2>
+                    <div class="editorial-section-sub">Matrix day mapping of all planned experiences and daily totals</div>
                 </div>
             </div>
-            <div class="calendar-grid">
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1.25rem;">
     `;
 
     for (let dayNum = 1; dayNum <= durationDays; dayNum++) {
@@ -1239,22 +1280,22 @@ function renderCalendarGridView(trip) {
         const dayCost = dayActs.reduce((sum, a) => sum + Number(a.estimated_cost || 0), 0);
 
         html += `
-            <div class="calendar-day-cell">
-                <div class="cal-day-title">
-                    <span>Day ${dayNum}</span>
-                    <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 500;">${dayDateStr}</span>
+            <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem; display: flex; flex-direction: column; min-height: 200px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.5rem;">
+                    <span style="font-family: var(--font-editorial); font-weight: 800; color: #FFFFFF; font-size: 0.95rem; text-transform: uppercase;">DAY ${dayNum}</span>
+                    <span style="font-size: 0.78rem; color: var(--sand-subtle);">${dayDateStr}</span>
                 </div>
-                <div style="flex: 1; overflow-y: auto;">
+                <div style="flex: 1; display: flex; flex-direction: column; gap: 0.45rem;">
         `;
 
         if (dayActs.length === 0) {
-            html += `<div style="font-size: 0.78rem; color: var(--text-light); text-align: center; margin-top: 2rem;">No events</div>`;
+            html += `<div style="font-size: 0.8rem; color: var(--text-dim); text-align: center; margin: auto;">No events</div>`;
         } else {
             dayActs.forEach(a => {
                 html += `
-                    <div class="cal-act-pill" title="${escapeHtml(a.name)}">
-                        <span><strong>${escapeHtml(a.scheduled_time || '10:00')}</strong> ${escapeHtml(a.name.substring(0, 16))}...</span>
-                        <span style="color: var(--primary);">${formatCurrency(a.estimated_cost, trip.currency)}</span>
+                    <div style="background: var(--bg-darker); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.45rem 0.65rem; font-size: 0.8rem; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: var(--text-main); font-weight: 600;"><strong>${escapeHtml(a.scheduled_time || '10:00')}</strong> ${escapeHtml(a.name.substring(0, 14))}...</span>
+                        <span style="color: var(--primary); font-weight: 700;">${formatCurrency(a.estimated_cost, trip.currency)}</span>
                     </div>
                 `;
             });
@@ -1262,7 +1303,7 @@ function renderCalendarGridView(trip) {
 
         html += `
                 </div>
-                <div style="margin-top: auto; padding-top: 0.5rem; border-top: 1px dashed var(--border-color); font-size: 0.78rem; font-weight: 700; display: flex; justify-content: space-between;">
+                <div style="margin-top: auto; padding-top: 0.65rem; border-top: 1px dashed var(--border-color); font-size: 0.8rem; font-weight: 700; display: flex; justify-content: space-between; color: var(--sand-cream);">
                     <span>Total:</span>
                     <span>${formatCurrency(dayCost, trip.currency)}</span>
                 </div>
@@ -1277,73 +1318,9 @@ function renderCalendarGridView(trip) {
     return html;
 }
 
-// ================= Builder Sub-View: Vertical Timeline =================
+// ================= Builder Sub-View: Vertical Timeline (Command Center) =================
 function renderVerticalTimelineView(trip) {
-    const stops = trip.stops || [];
-    const activities = trip.activities || [];
-    const durationDays = trip.duration_days || 1;
-
-    let html = `
-        <div class="calendar-view-container">
-            <div class="section-header">
-                <div>
-                    <h2 class="section-title"><i class="fa-solid fa-route" style="color: var(--primary);"></i> Journey Progression Timeline</h2>
-                    <p style="font-size: 0.85rem; color: var(--text-muted);">Step-by-step traveler journey sequence.</p>
-                </div>
-            </div>
-            <div class="timeline-container">
-    `;
-
-    for (let dayNum = 1; dayNum <= durationDays; dayNum++) {
-        let dayDateStr = '';
-        try {
-            const d = new Date(trip.start_date);
-            d.setDate(d.getDate() + (dayNum - 1));
-            dayDateStr = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-        } catch(e) {}
-
-        const dayActs = activities.filter(a => Number(a.day_number) === dayNum);
-
-        html += `
-            <div class="timeline-node">
-                <div class="timeline-dot"><i class="fa-solid fa-flag"></i></div>
-                <div style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem;">
-                        <span class="day-pill">DAY ${dayNum}</span>
-                        <span style="font-weight: 700; color: var(--text-main); font-size: 0.95rem;">${dayDateStr}</span>
-                    </div>
-        `;
-
-        if (dayActs.length === 0) {
-            html += `<p style="font-size: 0.85rem; color: var(--text-muted);">Leisure day / Transit</p>`;
-        } else {
-            html += `<div style="display: flex; flex-direction: column; gap: 0.65rem;">`;
-            dayActs.forEach(a => {
-                html += `
-                    <div style="background: #fff; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.85rem 1rem; display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <span style="font-weight: 700; color: var(--primary); margin-right: 0.5rem;">${escapeHtml(a.scheduled_time || '10:00')}</span>
-                            <span style="font-weight: 600;">${escapeHtml(a.name)}</span>
-                            <span class="category-tag ${a.category}" style="margin-left: 0.5rem;">${escapeHtml(a.category)}</span>
-                        </div>
-                        <span style="font-weight: 700; font-family: var(--font-heading);">${formatCurrency(a.estimated_cost, trip.currency)}</span>
-                    </div>
-                `;
-            });
-            html += `</div>`;
-        }
-
-        html += `
-                </div>
-            </div>
-        `;
-    }
-
-    html += `
-            </div>
-        </div>
-    `;
-    return html;
+    return renderBuilderScheduleView(trip);
 }
 
 // ================= Builder Sub-View: Presentation Mode =================
@@ -1353,33 +1330,35 @@ function renderPresentationView(trip) {
     const durationDays = trip.duration_days || 1;
 
     let html = `
-        <div style="background: #fff; border: 1px solid var(--border-color); border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--shadow-xl); margin-bottom: 2rem;">
+        <div style="background: var(--bg-surface); border: 1px solid var(--border-card); border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--shadow-xl); margin-bottom: 2rem;">
             <!-- Hero Banner -->
-            <div style="height: 300px; position: relative; background: #1E1B4B;">
-                <img src="${trip.cover_image || 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=1200&q=80'}" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.75;">
-                <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 2rem; background: linear-gradient(to top, rgba(15, 23, 42, 0.95), transparent); color: #fff;">
+            <div style="height: 320px; position: relative;">
+                <img src="${trip.cover_image || 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=1200&q=80'}" style="width: 100%; height: 100%; object-fit: cover; filter: brightness(0.65);">
+                <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 2.5rem; background: linear-gradient(to top, rgba(7, 10, 18, 0.95), transparent); color: #fff;">
                     <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
-                        <span class="badge-chip accent">${trip.travel_style || 'Balanced'}</span>
-                        <span class="badge-chip score"><i class="fa-solid fa-star"></i> Score: ${trip.trip_balance_score}/100</span>
+                        <span class="journey-badge-top-left" style="position: static;">${trip.travel_style || 'Balanced'}</span>
+                        <span class="journey-badge-top-left" style="position: static; color: #FBBF24;"><i class="fa-solid fa-star"></i> Health: ${trip.trip_balance_score}/100</span>
                     </div>
-                    <h1 style="color: #fff; font-size: 2.4rem; margin-bottom: 0.4rem;">${escapeHtml(trip.name)}</h1>
-                    <div style="color: #C7D2FE; font-size: 1rem; display: flex; gap: 1.5rem; flex-wrap: wrap;">
+                    <h1 class="editorial-masthead" style="font-size: 2.75rem; color: #FFFFFF; margin-bottom: 0.5rem;">${escapeHtml(trip.name)}</h1>
+                    <div style="color: var(--sand-cream); font-size: 1rem; display: flex; gap: 1.5rem; flex-wrap: wrap; font-weight: 600;">
                         <span><i class="fa-regular fa-calendar"></i> ${formatDateRange(trip.start_date, trip.end_date)} (${trip.duration_days} Days)</span>
                         <span><i class="fa-solid fa-users"></i> ${trip.travelers_count} Travelers</span>
-                        <span><i class="fa-solid fa-wallet"></i> Est. Cost: ${formatCurrency(trip.total_estimated_cost, trip.currency)}</span>
+                        <span><i class="fa-solid fa-wallet"></i> Total Est: ${formatCurrency(trip.total_estimated_cost, trip.currency)}</span>
                     </div>
                 </div>
             </div>
 
             <!-- Route Summary -->
-            <div style="padding: 2rem; border-bottom: 1px solid var(--border-color); background: var(--bg-main);">
-                <h3 style="margin-bottom: 1rem; font-size: 1.2rem;"><i class="fa-solid fa-map-pin" style="color: var(--primary);"></i> Route Overview</h3>
+            <div style="padding: 2rem; border-bottom: 1px solid var(--border-color); background: var(--bg-darker);">
+                <h3 class="editorial-masthead" style="font-size: 1.2rem; color: #FFFFFF; margin-bottom: 1rem;">
+                    <i class="fa-solid fa-map-location-dot" style="color: var(--primary);"></i> Route Blueprint
+                </h3>
                 <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
     `;
 
     stops.forEach((s, idx) => {
         html += `
-            <div style="background: #fff; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.75rem 1.25rem; font-weight: 700;">
+            <div style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.75rem 1.25rem; font-weight: 700; color: #FFFFFF; text-transform: uppercase;">
                 ${idx + 1}. ${escapeHtml(s.city_name)}, ${escapeHtml(s.country_name)} (${s.duration_days}d)
             </div>
         `;
@@ -1393,9 +1372,9 @@ function renderPresentationView(trip) {
             </div>
 
             <!-- Day-by-Day Showcase -->
-            <div style="padding: 2rem;">
-                <h3 style="margin-bottom: 1.5rem; font-size: 1.3rem;">Complete Day-by-Day Itinerary</h3>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
+            <div style="padding: 2.5rem;">
+                <h3 class="editorial-masthead" style="font-size: 1.4rem; color: #FFFFFF; margin-bottom: 1.5rem;">Complete Day-by-Day Schedule</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;">
     `;
 
     for (let dayNum = 1; dayNum <= durationDays; dayNum++) {
@@ -1408,20 +1387,20 @@ function renderPresentationView(trip) {
         } catch(e) {}
 
         html += `
-            <div style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
-                    <span class="day-pill">DAY ${dayNum}</span>
-                    <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">${dayDateStr}</span>
+            <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.5rem;">
+                    <span style="font-family: var(--font-editorial); font-weight: 800; color: #FFFFFF; font-size: 1.05rem;">DAY ${dayNum}</span>
+                    <span style="font-size: 0.85rem; font-weight: 600; color: var(--sand-subtle);">${dayDateStr}</span>
                 </div>
         `;
 
         if (dayActs.length === 0) {
-            html += `<p style="font-size: 0.85rem; color: var(--text-light); text-align: center; padding: 1rem 0;">Free exploration day</p>`;
+            html += `<p style="font-size: 0.85rem; color: var(--text-dim); text-align: center; padding: 1rem 0;">Free exploration day</p>`;
         } else {
             dayActs.forEach(a => {
                 html += `
-                    <div style="margin-bottom: 0.65rem; font-size: 0.88rem;">
-                        <span style="font-weight: 700; color: var(--primary);">${escapeHtml(a.scheduled_time || '10:00')}</span> — 
+                    <div style="margin-bottom: 0.75rem; font-size: 0.9rem; color: var(--text-main);">
+                        <span style="font-weight: 700; color: var(--primary);">${escapeHtml(a.scheduled_time || '10:00')}</span> &bull; 
                         <span style="font-weight: 600;">${escapeHtml(a.name)}</span>
                         <div style="font-size: 0.78rem; color: var(--text-muted);">${formatCurrency(a.estimated_cost, trip.currency)} &bull; ${escapeHtml(a.category)}</div>
                     </div>
@@ -1445,7 +1424,6 @@ function renderPresentationView(trip) {
 async function renderPublicSharedTrip() {
     const main = document.getElementById('main-content');
     if (!state.sharedToken) {
-        // extract from URL if format is /shared/<token>
         const pathParts = window.location.pathname.split('/');
         if (pathParts[1] === 'shared' && pathParts[2]) {
             state.sharedToken = pathParts[2];
@@ -1461,11 +1439,11 @@ async function renderPublicSharedTrip() {
     const res = await apiRequest(`/api/v1/shared/${state.sharedToken}`);
     if (!res.success || !res.trip) {
         main.innerHTML = `
-            <div style="background: #fff; border-radius: var(--radius-lg); padding: 3rem; text-align: center; border: 1px solid var(--border-color);">
+            <div style="background: var(--bg-surface); border-radius: var(--radius-xl); padding: 4rem; text-align: center; border: 1px solid var(--border-card);">
                 <i class="fa-solid fa-link-slash" style="font-size: 3rem; color: var(--danger); margin-bottom: 1rem;"></i>
-                <h2>Itinerary Not Available</h2>
-                <p style="color: var(--text-muted); margin: 0.5rem 0 1.5rem;">This public link is either invalid, expired, or was made private by the author.</p>
-                <button class="btn btn-primary" onclick="navigateTo('dashboard')">Go to GlobeTrotter Home</button>
+                <h2 class="editorial-masthead" style="font-size: 1.75rem; margin-bottom: 0.5rem;">Itinerary Not Available</h2>
+                <p style="color: var(--text-muted); margin: 0.5rem auto 1.5rem; max-width: 440px;">This public link is either invalid, expired, or was made private by the author.</p>
+                <button class="btn btn-primary" onclick="navigateTo('dashboard')">Go to Command Center</button>
             </div>
         `;
         return;
@@ -1475,27 +1453,27 @@ async function renderPublicSharedTrip() {
     state.sharedTrip = trip;
 
     let html = `
-        <div style="background: #fff; border: 1px solid var(--border-color); border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--shadow-xl); margin-bottom: 2rem;">
+        <div style="background: var(--bg-surface); border: 1px solid var(--border-card); border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--shadow-xl); margin-bottom: 2rem;">
             <!-- Top Callout Banner -->
-            <div style="background: linear-gradient(135deg, #1E1B4B 0%, #4338CA 100%); color: #fff; padding: 1.25rem 2rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+            <div style="background: var(--bg-surface-elevated); border-bottom: 1px solid var(--border-color); color: #fff; padding: 1.25rem 2rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
                 <div style="display: flex; align-items: center; gap: 0.75rem;">
-                    <i class="fa-solid fa-share-nodes" style="font-size: 1.3rem; color: #FDBA74;"></i>
+                    <i class="fa-solid fa-share-nodes" style="font-size: 1.3rem; color: var(--primary);"></i>
                     <div>
-                        <div style="font-weight: 700;">Shared Itinerary by ${escapeHtml(trip.owner_name || 'GlobeTrotter Traveler')}</div>
-                        <div style="font-size: 0.8rem; color: #C7D2FE;">You can copy this complete trip plan directly into your account.</div>
+                        <div style="font-weight: 700; font-family: var(--font-editorial); text-transform: uppercase;">Shared Itinerary by ${escapeHtml(trip.owner_name || 'GlobeTrotter Traveler')}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">You can copy this complete journey plan directly into your personal workspace.</div>
                     </div>
                 </div>
-                <button class="btn btn-accent btn-glow" onclick="handleCopySharedTrip('${state.sharedToken}')">
-                    <i class="fa-solid fa-copy"></i> Copy Trip to My Account
+                <button class="btn btn-primary" onclick="handleCopySharedTrip('${state.sharedToken}')">
+                    <i class="fa-solid fa-copy"></i> Copy Journey to My Account
                 </button>
             </div>
 
             <!-- Hero Section -->
             <div style="height: 280px; position: relative;">
-                <img src="${trip.cover_image || 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=1200&q=80'}" style="width: 100%; height: 100%; object-fit: cover;">
-                <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 2rem; background: linear-gradient(to top, rgba(15, 23, 42, 0.9), transparent); color: #fff;">
-                    <h1 style="color: #fff; font-size: 2.2rem; margin-bottom: 0.3rem;">${escapeHtml(trip.name)}</h1>
-                    <div style="color: #C7D2FE; font-size: 0.95rem; display: flex; gap: 1.5rem; flex-wrap: wrap;">
+                <img src="${trip.cover_image || 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=1200&q=80'}" style="width: 100%; height: 100%; object-fit: cover; filter: brightness(0.65);">
+                <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 2rem; background: linear-gradient(to top, rgba(7, 10, 18, 0.95), transparent); color: #fff;">
+                    <h1 class="editorial-masthead" style="font-size: 2.4rem; color: #FFFFFF; margin-bottom: 0.3rem;">${escapeHtml(trip.name)}</h1>
+                    <div style="color: var(--sand-cream); font-size: 0.95rem; display: flex; gap: 1.5rem; flex-wrap: wrap;">
                         <span><i class="fa-regular fa-calendar"></i> ${formatDateRange(trip.start_date, trip.end_date)} (${trip.duration_days} Days)</span>
                         <span><i class="fa-solid fa-users"></i> ${trip.travelers_count} Traveler(s)</span>
                         ${trip.total_budget > 0 ? `<span><i class="fa-solid fa-wallet"></i> Budget: ${formatCurrency(trip.total_budget, trip.currency)}</span>` : ''}
@@ -1505,7 +1483,7 @@ async function renderPublicSharedTrip() {
 
             <!-- Day-by-Day Breakdown -->
             <div style="padding: 2rem;">
-                <h3 style="margin-bottom: 1.5rem; font-size: 1.3rem;"><i class="fa-solid fa-calendar-check" style="color: var(--primary);"></i> Trip Itinerary Schedule</h3>
+                <h3 class="editorial-masthead" style="font-size: 1.3rem; margin-bottom: 1.5rem; color: #FFFFFF;"><i class="fa-solid fa-calendar-check" style="color: var(--primary);"></i> Journey Schedule</h3>
                 <div style="display: flex; flex-direction: column; gap: 1.25rem;">
     `;
 
@@ -1513,24 +1491,24 @@ async function renderPublicSharedTrip() {
         const dayActs = (trip.activities || []).filter(a => Number(a.day_number) === dayNum);
 
         html += `
-            <div style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem;">
+            <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem;">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
-                    <span class="day-pill">DAY ${dayNum}</span>
+                    <span class="journey-badge-top-left" style="position: static;">DAY ${dayNum}</span>
                 </div>
         `;
 
         if (dayActs.length === 0) {
-            html += `<p style="font-size: 0.85rem; color: var(--text-muted);">Free leisure day</p>`;
+            html += `<p style="font-size: 0.85rem; color: var(--text-dim);">Free leisure day</p>`;
         } else {
             dayActs.forEach(a => {
                 html += `
-                    <div style="background: #fff; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.75rem 1rem; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+                    <div style="background: var(--bg-darker); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.75rem 1rem; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
                         <div>
                             <span style="font-weight: 700; color: var(--primary); margin-right: 0.5rem;">${escapeHtml(a.scheduled_time || '10:00')}</span>
-                            <span style="font-weight: 600;">${escapeHtml(a.name)}</span>
-                            <span class="category-tag ${a.category}" style="margin-left: 0.5rem;">${escapeHtml(a.category)}</span>
+                            <span style="font-weight: 600; color: #FFFFFF;">${escapeHtml(a.name)}</span>
+                            <span class="section-badge activity" style="margin-left: 0.5rem;">${escapeHtml(a.category)}</span>
                         </div>
-                        ${a.estimated_cost > 0 ? `<span style="font-weight: 700;">${formatCurrency(a.estimated_cost, trip.currency)}</span>` : ''}
+                        ${a.estimated_cost > 0 ? `<span style="font-weight: 700; color: var(--sand-cream);">${formatCurrency(a.estimated_cost, trip.currency)}</span>` : ''}
                     </div>
                 `;
             });
@@ -1548,25 +1526,25 @@ async function renderPublicSharedTrip() {
     main.innerHTML = html;
 }
 
-// ================= View 5: Destinations Discovery =================
+// ================= View 5: Destinations Discovery (Command Center) =================
 async function renderDestinationsCatalog() {
     const main = document.getElementById('main-content');
-    main.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading destination catalog...</div>`;
+    main.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading destination intelligence...</div>`;
 
     const res = await apiRequest(`/api/v1/destinations?q=${encodeURIComponent(state.searchQuery)}&region=${state.selectedRegion}`);
     const destinations = res.success ? (res.destinations || []) : [];
     state.destinations = destinations;
 
     let html = `
-        <div class="section-header">
+        <div class="editorial-section-header">
             <div>
-                <h1 style="font-size: 2rem;">Explore Destinations</h1>
-                <p style="color: var(--text-muted);">Discover top world destinations, curated activities, and estimated cost indexes.</p>
+                <h1 class="editorial-section-title"><i class="fa-solid fa-earth-americas"></i> Explore Destinations</h1>
+                <div class="editorial-section-sub">Discover world capitals, curated activities, and estimated cost indexes</div>
             </div>
         </div>
 
         <!-- Search and Region Filters -->
-        <div style="background: #fff; border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 2rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+        <div style="background: var(--bg-surface); border: 1px solid var(--border-card); border-radius: var(--radius-xl); padding: 1.25rem 1.5rem; margin-bottom: 2.5rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
             <div style="flex: 1; min-width: 260px; position: relative;">
                 <input type="text" id="dest-search-input" class="form-control" placeholder="Search cities, countries (e.g. Jaipur, France, Tokyo)..." value="${escapeHtml(state.searchQuery)}" onkeyup="handleDestSearch(event)">
             </div>
@@ -1578,43 +1556,39 @@ async function renderDestinationsCatalog() {
             </div>
         </div>
 
-        <div class="trip-grid">
+        <div class="editorial-cards-grid">
     `;
 
     if (destinations.length === 0) {
         html += `
-            <div style="grid-column: 1 / -1; padding: 3rem; text-align: center; background: #fff; border-radius: var(--radius-lg); border: 1px dashed var(--border-color);">
-                <h3>No destinations matched your criteria.</h3>
-                <p style="color: var(--text-muted); margin-top: 0.5rem;">Try searching for another city or country name.</p>
+            <div style="grid-column: 1 / -1; padding: 4rem; text-align: center; background: var(--bg-surface); border-radius: var(--radius-xl); border: 1px dashed var(--border-card);">
+                <h3 class="editorial-masthead" style="font-size: 1.5rem; margin-bottom: 0.5rem;">No Destinations Matched</h3>
+                <p style="color: var(--text-muted);">Try searching for another city or country name.</p>
             </div>
         `;
     } else {
         destinations.forEach(dest => {
             html += `
-                <div class="trip-card" onclick="openDestinationDetailModal(${dest.id})">
-                    <div class="trip-card-cover">
+                <div class="editorial-card" onclick="openDestinationDetailModal(${dest.id})">
+                    <div class="editorial-card-media">
                         <img src="${dest.cover_image}" alt="${escapeHtml(dest.name)}" loading="lazy">
-                        <span class="trip-status-tag" style="background: rgba(15, 23, 42, 0.85); color: #FDBA74;">
-                            <i class="fa-solid fa-star"></i> ${dest.popularity}/100
-                        </span>
-                        <span class="trip-style-tag">${escapeHtml(dest.country)}</span>
+                        <span class="editorial-card-badge">${escapeHtml(dest.country)}</span>
+                        <span class="editorial-card-price-badge">${'₹'.repeat(dest.cost_index || 2)} Tier</span>
                     </div>
-                    <div class="trip-card-body">
-                        <h3 class="trip-card-title">${escapeHtml(dest.name)}, ${escapeHtml(dest.country)}</h3>
-                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem; line-height: 1.4;">
-                            ${escapeHtml(dest.description.substring(0, 110))}...
-                        </p>
-                        <div class="trip-meta-row" style="margin-top: auto;">
-                            <div class="trip-meta-item"><i class="fa-solid fa-clock"></i> Rec: ${dest.recommended_duration_days} Days</div>
-                            <div class="trip-meta-item"><i class="fa-solid fa-coins"></i> Cost Index: ${'₹'.repeat(dest.cost_index || 2)}</div>
-                            <div class="trip-meta-item"><i class="fa-solid fa-ticket"></i> ${dest.activity_count || 0} Acts</div>
+                    <div class="editorial-card-content">
+                        <h3 class="editorial-card-title">${escapeHtml(dest.name)}, ${escapeHtml(dest.country)}</h3>
+                        <div class="editorial-card-loc">
+                            <i class="fa-solid fa-clock"></i> Rec: ${dest.recommended_duration_days} Days &bull; ${dest.activity_count || 0} Acts
                         </div>
-                        <div class="trip-card-actions">
+                        <p class="editorial-card-desc">
+                            ${escapeHtml(dest.description)}
+                        </p>
+                        <div class="editorial-card-footer">
                             <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openAddToTripModal(${dest.id})">
-                                <i class="fa-solid fa-plus"></i> Add to My Trip
+                                <i class="fa-solid fa-plus"></i> Add to Journey
                             </button>
                             <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openDestinationDetailModal(${dest.id})">
-                                Details &amp; Experiences
+                                Experiences
                             </button>
                         </div>
                     </div>
@@ -1639,7 +1613,7 @@ function filterDestRegion(region) {
     renderDestinationsCatalog();
 }
 
-// ================= View 6: Activities Catalog =================
+// ================= View 6: Activities Catalog (Command Center) =================
 async function renderActivitiesCatalog() {
     const main = document.getElementById('main-content');
     main.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading experiences &amp; activities...</div>`;
@@ -1649,15 +1623,15 @@ async function renderActivitiesCatalog() {
     state.activities = activities;
 
     let html = `
-        <div class="section-header">
+        <div class="editorial-section-header">
             <div>
-                <h1 style="font-size: 2rem;">Experiences &amp; Activities</h1>
-                <p style="color: var(--text-muted);">Browse curated things to do, tours, gastronomy, and cultural adventures.</p>
+                <h1 class="editorial-section-title"><i class="fa-solid fa-ticket"></i> Experiences &amp; Activities</h1>
+                <div class="editorial-section-sub">Browse curated things to do, tours, gastronomy, and cultural adventures</div>
             </div>
         </div>
 
         <!-- Category Filters -->
-        <div style="display: flex; gap: 0.4rem; margin-bottom: 2rem; flex-wrap: wrap;">
+        <div style="display: flex; gap: 0.4rem; margin-bottom: 2.5rem; flex-wrap: wrap;">
             <button class="btn btn-sm ${state.selectedCategory === 'all' ? 'btn-primary' : 'btn-outline'}" onclick="filterActivityCat('all')">All Categories</button>
             <button class="btn btn-sm ${state.selectedCategory === 'sightseeing' ? 'btn-primary' : 'btn-outline'}" onclick="filterActivityCat('sightseeing')">Sightseeing</button>
             <button class="btn btn-sm ${state.selectedCategory === 'food' ? 'btn-primary' : 'btn-outline'}" onclick="filterActivityCat('food')">Food &amp; Dining</button>
@@ -1667,34 +1641,31 @@ async function renderActivitiesCatalog() {
             <button class="btn btn-sm ${state.selectedCategory === 'relaxation' ? 'btn-primary' : 'btn-outline'}" onclick="filterActivityCat('relaxation')">Relaxation</button>
         </div>
 
-        <div class="trip-grid">
+        <div class="editorial-cards-grid">
     `;
 
     activities.forEach(act => {
         html += `
-            <div class="trip-card">
-                <div class="trip-card-cover" style="height: 150px;">
+            <div class="editorial-card">
+                <div class="editorial-card-media" style="height: 160px;">
                     <img src="${act.image || 'https://images.unsplash.com/photo-1598324789736-4861f89564a0?auto=format&fit=crop&w=800&q=80'}" alt="${escapeHtml(act.name)}" loading="lazy">
-                    <span class="trip-status-tag ${act.category}">${escapeHtml(act.category)}</span>
+                    <span class="editorial-card-badge">${escapeHtml(act.category)}</span>
+                    <span class="editorial-card-price-badge">${formatCurrency(act.estimated_cost, 'INR')}</span>
                 </div>
-                <div class="trip-card-body">
-                    <h3 class="trip-card-title">${escapeHtml(act.name)}</h3>
-                    <div style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.5rem;">
-                        <i class="fa-solid fa-location-dot"></i> ${escapeHtml(act.city_name)}, ${escapeHtml(act.country_name)}
+                <div class="editorial-card-content">
+                    <h3 class="editorial-card-title">${escapeHtml(act.name)}</h3>
+                    <div class="editorial-card-loc">
+                        <i class="fa-solid fa-location-dot"></i> ${escapeHtml(act.city_name)}, ${escapeHtml(act.country_name)} &bull; ${act.duration_hours}h
                     </div>
-                    <p style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 0.75rem; line-height: 1.4;">
+                    <p class="editorial-card-desc">
                         ${escapeHtml(act.description)}
                     </p>
-                    <div class="trip-meta-row" style="margin-top: auto;">
-                        <div class="trip-meta-item"><i class="fa-regular fa-clock"></i> ${act.duration_hours}h</div>
-                        <div class="trip-meta-item"><i class="fa-solid fa-star" style="color: #F59E0B;"></i> ${act.popularity}/100</div>
-                    </div>
-                    <div class="trip-card-actions">
-                        <span style="font-family: var(--font-heading); font-weight: 700; font-size: 1.1rem; color: var(--primary);">
-                            ${formatCurrency(act.estimated_cost, 'INR')}
+                    <div class="editorial-card-footer">
+                        <span style="font-size: 0.8rem; font-weight: 700; color: #FBBF24;">
+                            <i class="fa-solid fa-star"></i> ${act.popularity}/100
                         </span>
                         <button class="btn btn-primary btn-sm" onclick="openScheduleCatalogActModal(${act.id})">
-                            <i class="fa-solid fa-plus"></i> Schedule to Trip
+                            <i class="fa-solid fa-plus"></i> Schedule
                         </button>
                     </div>
                 </div>
@@ -1714,7 +1685,7 @@ function filterActivityCat(cat) {
 // ================= View 7: Admin Analytics & User Management =================
 async function renderAdminDashboard() {
     const main = document.getElementById('main-content');
-    main.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading platform analytics & users...</div>`;
+    main.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading platform intelligence & users...</div>`;
 
     const [aRes, uRes] = await Promise.all([
         apiRequest('/api/v1/admin/analytics'),
@@ -1730,55 +1701,55 @@ async function renderAdminDashboard() {
     const users = (uRes.success && uRes.users) ? uRes.users : [];
 
     let html = `
-        <div class="section-header">
+        <div class="editorial-section-header">
             <div>
-                <h1 style="font-size: 2rem;"><i class="fa-solid fa-chart-line" style="color: var(--primary);"></i> Platform Intelligence &amp; Analytics</h1>
-                <p style="color: var(--text-muted);">Real-time adoption metrics, demand leaderboard, and traveler management.</p>
+                <h1 class="editorial-section-title"><i class="fa-solid fa-chart-line"></i> Platform Intelligence &amp; Analytics</h1>
+                <div class="editorial-section-sub">Real-time adoption metrics, demand leaderboard, and user management</div>
             </div>
         </div>
 
-        <div class="kpi-grid">
-            <div class="kpi-card">
-                <div class="kpi-icon-wrap indigo"><i class="fa-solid fa-users"></i></div>
-                <div class="kpi-data">
-                    <span class="kpi-label">Registered Travelers</span>
-                    <span class="kpi-val">${a.total_users}</span>
+        <div class="command-hud-grid">
+            <div class="hud-card">
+                <div class="hud-icon-wrap indigo"><i class="fa-solid fa-users"></i></div>
+                <div class="hud-data">
+                    <span class="hud-label">Registered Travelers</span>
+                    <span class="hud-value">${a.total_users}</span>
                 </div>
             </div>
-            <div class="kpi-card">
-                <div class="kpi-icon-wrap emerald"><i class="fa-solid fa-map"></i></div>
-                <div class="kpi-data">
-                    <span class="kpi-label">Total Itineraries</span>
-                    <span class="kpi-val">${a.total_trips}</span>
+            <div class="hud-card">
+                <div class="hud-icon-wrap emerald"><i class="fa-solid fa-map"></i></div>
+                <div class="hud-data">
+                    <span class="hud-label">Total Itineraries</span>
+                    <span class="hud-value">${a.total_trips}</span>
                 </div>
             </div>
-            <div class="kpi-card">
-                <div class="kpi-icon-wrap amber"><i class="fa-solid fa-money-bill-wave"></i></div>
-                <div class="kpi-data">
-                    <span class="kpi-label">Average Trip Budget</span>
-                    <span class="kpi-val">${formatCurrency(a.avg_budget, 'INR')}</span>
+            <div class="hud-card">
+                <div class="hud-icon-wrap amber"><i class="fa-solid fa-money-bill-wave"></i></div>
+                <div class="hud-data">
+                    <span class="hud-label">Average Budget</span>
+                    <span class="hud-value">${formatCurrency(a.avg_budget, 'INR')}</span>
                 </div>
             </div>
-            <div class="kpi-card">
-                <div class="kpi-icon-wrap sky"><i class="fa-solid fa-comments"></i></div>
-                <div class="kpi-data">
-                    <span class="kpi-label">Community Stories</span>
-                    <span class="kpi-val">${(a.community && a.community.total_posts) ? a.community.total_posts : 5}</span>
+            <div class="hud-card">
+                <div class="hud-icon-wrap sky"><i class="fa-solid fa-comments"></i></div>
+                <div class="hud-data">
+                    <span class="hud-label">Community Stories</span>
+                    <span class="hud-value">${(a.community && a.community.total_posts) ? a.community.total_posts : 5}</span>
                 </div>
             </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
-            <div class="admin-card">
-                <h3 style="margin-bottom: 1rem;"><i class="fa-solid fa-trophy" style="color: var(--accent);"></i> Top Visited Destinations</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2.5rem;">
+            <div class="budget-analytics-panel">
+                <h3 class="editorial-masthead" style="font-size: 1.2rem; color: #FFFFFF; margin-bottom: 1rem;"><i class="fa-solid fa-trophy" style="color: var(--accent);"></i> Top Visited Destinations</h3>
                 <div style="display: flex; flex-direction: column; gap: 0.75rem;">
     `;
 
     (a.top_cities || []).forEach((c, idx) => {
         html += `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 0; border-bottom: 1px solid var(--border-subtle);">
-                <span><strong>${idx + 1}. ${escapeHtml(c.name)}</strong>, ${escapeHtml(c.country)}</span>
-                <span class="badge-chip primary">${c.visit_count} Itineraries</span>
+                <span style="color: var(--text-main);"><strong>${idx + 1}. ${escapeHtml(c.name)}</strong>, ${escapeHtml(c.country)}</span>
+                <span class="journey-badge-top-left" style="position: static;">${c.visit_count} Itineraries</span>
             </div>
         `;
     });
@@ -1787,16 +1758,16 @@ async function renderAdminDashboard() {
                 </div>
             </div>
 
-            <div class="admin-card">
-                <h3 style="margin-bottom: 1rem;"><i class="fa-solid fa-chart-pie" style="color: var(--primary);"></i> Travel Style Distribution</h3>
+            <div class="budget-analytics-panel">
+                <h3 class="editorial-masthead" style="font-size: 1.2rem; color: #FFFFFF; margin-bottom: 1rem;"><i class="fa-solid fa-chart-pie" style="color: var(--primary);"></i> Travel Style Distribution</h3>
                 <div style="display: flex; flex-direction: column; gap: 0.75rem;">
     `;
 
     (a.styles || []).forEach(s => {
         html += `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 0; border-bottom: 1px solid var(--border-subtle);">
-                <span style="text-transform: capitalize;"><strong>${escapeHtml(s.travel_style)}</strong></span>
-                <span class="badge-chip accent">${s.count} Trips</span>
+                <span style="text-transform: capitalize; color: var(--text-main);"><strong>${escapeHtml(s.travel_style)}</strong></span>
+                <span class="journey-badge-top-left" style="position: static; color: var(--primary);">${s.count} Trips</span>
             </div>
         `;
     });
@@ -1807,39 +1778,39 @@ async function renderAdminDashboard() {
         </div>
 
         <!-- User Management Table -->
-        <div class="admin-card">
+        <div class="budget-analytics-panel">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3><i class="fa-solid fa-user-shield" style="color: var(--primary);"></i> Registered Users &amp; Profiles</h3>
-                <span class="badge-chip primary">${users.length} Users</span>
+                <h3 class="editorial-masthead" style="font-size: 1.2rem; color: #FFFFFF;"><i class="fa-solid fa-user-shield" style="color: var(--primary);"></i> Registered Users &amp; Profiles</h3>
+                <span class="journey-badge-top-left" style="position: static;">${users.length} Users</span>
             </div>
             <div style="overflow-x: auto;">
-                <table class="admin-table">
+                <table class="admin-table" style="width: 100%; border-collapse: collapse;">
                     <thead>
-                        <tr>
-                            <th>User</th>
-                            <th>Email</th>
-                            <th>Role</th>
-                            <th>Location</th>
-                            <th>Style</th>
-                            <th>Currency</th>
-                            <th>Trips</th>
+                        <tr style="border-bottom: 1px solid var(--border-color); text-align: left; font-size: 0.75rem; text-transform: uppercase; color: var(--text-dim);">
+                            <th style="padding: 0.75rem;">User</th>
+                            <th style="padding: 0.75rem;">Email</th>
+                            <th style="padding: 0.75rem;">Role</th>
+                            <th style="padding: 0.75rem;">Location</th>
+                            <th style="padding: 0.75rem;">Style</th>
+                            <th style="padding: 0.75rem;">Currency</th>
+                            <th style="padding: 0.75rem;">Trips</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${users.map(u => `
-                            <tr>
-                                <td>
+                            <tr style="border-bottom: 1px solid var(--border-subtle); font-size: 0.85rem;">
+                                <td style="padding: 0.75rem;">
                                     <div style="display: flex; align-items: center; gap: 0.6rem;">
-                                        <div class="user-avatar" style="width: 32px; height: 32px; font-size: 0.85rem;">${escapeHtml(u.name.charAt(0).toUpperCase())}</div>
-                                        <strong>${escapeHtml(u.name)}</strong>
+                                        <div class="user-avatar" style="width: 28px; height: 28px; font-size: 0.75rem;">${escapeHtml(u.name.charAt(0).toUpperCase())}</div>
+                                        <strong style="color: #FFFFFF;">${escapeHtml(u.name)}</strong>
                                     </div>
                                 </td>
-                                <td>${escapeHtml(u.email)}</td>
-                                <td><span class="role-badge" style="${u.role === 'admin' ? 'background: #FEE2E2; color: #991B1B;' : ''}">${u.role}</span></td>
-                                <td>${escapeHtml(u.city || '')}${u.country ? `, ${escapeHtml(u.country)}` : '-'}</td>
-                                <td><span class="badge-chip" style="text-transform: capitalize;">${escapeHtml(u.preferred_travel_style || 'balanced')}</span></td>
-                                <td>${escapeHtml(u.preferred_currency || 'INR')}</td>
-                                <td><strong>${u.trips_count || 0}</strong></td>
+                                <td style="padding: 0.75rem; color: var(--text-muted);">${escapeHtml(u.email)}</td>
+                                <td style="padding: 0.75rem;"><span class="role-badge">${u.role}</span></td>
+                                <td style="padding: 0.75rem; color: var(--sand-subtle);">${escapeHtml(u.city || '')}${u.country ? `, ${escapeHtml(u.country)}` : '-'}</td>
+                                <td style="padding: 0.75rem;"><span class="section-badge activity">${escapeHtml(u.preferred_travel_style || 'balanced')}</span></td>
+                                <td style="padding: 0.75rem; color: var(--text-muted);">${escapeHtml(u.preferred_currency || 'INR')}</td>
+                                <td style="padding: 0.75rem; font-weight: 700; color: var(--primary);">${u.trips_count || 0}</td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -1851,7 +1822,7 @@ async function renderAdminDashboard() {
     main.innerHTML = html;
 }
 
-// ================= View 8: Community Hub =================
+// ================= View 8: Community Hub (Command Center) =================
 let communityFilterContext = {
     search: '',
     city: 'all',
@@ -1866,7 +1837,7 @@ async function renderCommunityHub(search = '', city = 'all', style = 'all', sort
     communityFilterContext.sort = sort;
 
     const main = document.getElementById('main-content');
-    main.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading community itineraries & stories...</div>`;
+    main.innerHTML = `<div class="loading-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading community journal &amp; stories...</div>`;
 
     const queryParams = new URLSearchParams();
     if (search) queryParams.set('q', search);
@@ -1878,18 +1849,18 @@ async function renderCommunityHub(search = '', city = 'all', style = 'all', sort
     const posts = res.success ? (res.posts || []) : [];
 
     let html = `
-        <div class="section-header">
+        <div class="editorial-section-header">
             <div>
-                <h1 style="font-size: 2rem;"><i class="fa-solid fa-users" style="color: var(--primary);"></i> GlobeTrotter Community Hub</h1>
-                <p style="color: var(--text-muted);">Explore real traveler stories, like &amp; save inspirations, and 1-click import itineraries directly into your trip.</p>
+                <h1 class="editorial-section-title"><i class="fa-solid fa-book-journal-whills"></i> Traveler Journal &amp; Hub</h1>
+                <div class="editorial-section-sub">Explore curated travel journals, like &amp; save inspirations, and 1-click import itineraries</div>
             </div>
-            <button class="btn btn-primary btn-glow" onclick="openCreateCommunityPostModal()">
-                <i class="fa-solid fa-pen-nib"></i> <span>Share Your Experience</span>
+            <button class="btn btn-primary" onclick="openCreateCommunityPostModal()">
+                <i class="fa-solid fa-pen-nib"></i> <span>Publish Story</span>
             </button>
         </div>
 
         <!-- Community Filter Controls -->
-        <div style="background: #fff; border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 2rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+        <div style="background: var(--bg-surface); border: 1px solid var(--border-card); border-radius: var(--radius-xl); padding: 1.25rem 1.5rem; margin-bottom: 2.5rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
             <div style="flex: 1; min-width: 240px;">
                 <input type="text" id="comm-search-input" class="form-control" placeholder="Search stories, forts, temples, food..." value="${escapeHtml(search)}" onkeyup="if(event.key==='Enter') renderCommunityHub(this.value, communityFilterContext.city, communityFilterContext.style, communityFilterContext.sort)">
             </div>
@@ -1909,34 +1880,69 @@ async function renderCommunityHub(search = '', city = 'all', style = 'all', sort
 
     if (posts.length === 0) {
         html += `
-            <div style="background: #fff; border: 1px dashed var(--border-color); border-radius: var(--radius-lg); padding: 3.5rem; text-align: center;">
-                <i class="fa-solid fa-compass" style="font-size: 3rem; color: var(--text-light); margin-bottom: 1rem;"></i>
-                <h3>No community stories found</h3>
-                <p style="color: var(--text-muted); margin-bottom: 1.5rem;">Be the first to share your travel journey with the GlobeTrotter community!</p>
-                <button class="btn btn-primary" onclick="openCreateCommunityPostModal()"><i class="fa-solid fa-pen-nib"></i> Share Experience</button>
+            <div style="background: var(--bg-surface); border: 1px dashed var(--border-card); border-radius: var(--radius-xl); padding: 4rem; text-align: center;">
+                <i class="fa-solid fa-compass" style="font-size: 3rem; color: var(--text-dim); margin-bottom: 1rem;"></i>
+                <h3 class="editorial-masthead" style="font-size: 1.5rem; margin-bottom: 0.5rem;">No Stories Found</h3>
+                <p style="color: var(--text-muted); margin-bottom: 1.5rem;">Be the first to share your travel story with the GlobeTrotter community!</p>
+                <button class="btn btn-primary" onclick="openCreateCommunityPostModal()"><i class="fa-solid fa-pen-nib"></i> Publish Story</button>
             </div>
         `;
     } else {
-        html += `<div class="community-grid">`;
+        html += `<div class="community-journal-grid">`;
         posts.forEach(post => {
             const hList = post.highlights || [];
             html += `
-                <div class="community-post-card">
-                    <div class="community-card-cover">
+                <div class="community-journal-card">
+                    <div class="journal-card-cover">
                         <img src="${post.cover_image || 'https://images.unsplash.com/photo-1598324789736-4861f89564a0?auto=format&fit=crop&w=800&q=80'}" alt="${escapeHtml(post.title)}" loading="lazy">
-                        <span class="trip-status-tag" style="background: rgba(15, 23, 42, 0.85); color: #FBBF24;">
-                            <i class="fa-solid fa-star"></i> ${post.rating || 5.0}
-                        </span>
-                        <span class="trip-style-tag">${escapeHtml(post.travel_style || 'Adventure')}</span>
-                    </div>
-                    <div class="community-card-body">
-                        <div class="community-author-row">
-                            <img src="${post.author_avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'}" class="community-author-avatar" alt="${escapeHtml(post.author_name)}">
-                            <div>
-                                <div class="community-author-name">${escapeHtml(post.author_name)}</div>
-                                <div style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(post.city_name || 'India')}</div>
-                            </div>
+                        <div class="journal-card-author-pill">
+                            <img src="${post.author_avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'}" style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover;" alt="${escapeHtml(post.author_name)}">
+                            <span>${escapeHtml(post.author_name)}</span>
                         </div>
+                    </div>
+                    <div class="journal-card-body">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <span class="section-badge activity">${escapeHtml(post.travel_style || 'Adventure')}</span>
+                            <span style="font-size: 0.8rem; font-weight: 700; color: #FBBF24;"><i class="fa-solid fa-star"></i> ${post.rating || 5.0}</span>
+                        </div>
+
+                        <h3 class="journal-card-title" onclick="openCommunityPostDetailModal(${post.id})">
+                            ${escapeHtml(post.title)}
+                        </h3>
+                        <p class="journal-card-excerpt">${escapeHtml(post.content)}</p>
+
+                        ${hList.length > 0 ? `
+                            <div style="background: var(--bg-darker); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.65rem 0.85rem; font-size: 0.78rem; margin-bottom: 1rem;">
+                                <div style="font-weight: 700; color: var(--sand-cream); margin-bottom: 0.2rem;"><i class="fa-solid fa-list-check" style="color: var(--primary);"></i> Key Highlights:</div>
+                                <div style="color: var(--text-muted);">${escapeHtml(hList.slice(0, 2).map(h => h.name).join(' &bull; '))}</div>
+                            </div>
+                        ` : ''}
+
+                        <div class="journal-card-footer">
+                            <div style="display: flex; gap: 0.4rem;">
+                                <button class="reaction-btn ${post.user_liked ? 'liked' : ''}" onclick="toggleCommunityLike(${post.id})">
+                                    <i class="${post.user_liked ? 'fa-solid' : 'fa-regular'} fa-heart"></i>
+                                    <span id="post-likes-${post.id}">${post.likes_count || 0}</span>
+                                </button>
+                                <button class="reaction-btn ${post.user_saved ? 'saved' : ''}" onclick="toggleCommunitySave(${post.id})">
+                                    <i class="${post.user_saved ? 'fa-solid' : 'fa-regular'} fa-bookmark"></i>
+                                    <span id="post-saves-${post.id}">${post.saves_count || 0}</span>
+                                </button>
+                            </div>
+
+                            <button class="btn btn-primary btn-sm" onclick="open1ClickImportModal(${post.id})">
+                                <i class="fa-solid fa-download"></i> 1-Click Import
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        html += `</div>`;
+    }
+
+    main.innerHTML = html;
+}
 
                         <h3 class="community-post-title" onclick="openCommunityPostDetailModal(${post.id})" style="cursor: pointer;">
                             ${escapeHtml(post.title)}
