@@ -204,7 +204,6 @@ button, input, select, textarea {
     gap: 0.85rem;
 }
 
-/* ================= Buttons & UI Controls ================= */
 .btn {
     display: inline-flex;
     align-items: center;
