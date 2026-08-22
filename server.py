@@ -2718,10 +2718,12 @@ class GlobeTrotterRequestHandler(SimpleHTTPRequestHandler):
         conn.close()
         return self._send_error('Endpoint not found', status=404)
 
+from http.server import HTTPServer, SimpleHTTPRequestHandler, ThreadingHTTPServer
+
 def run_server(port=8069):
     init_db()
     server_address = ('0.0.0.0', port)
-    httpd = HTTPServer(server_address, GlobeTrotterRequestHandler)
+    httpd = ThreadingHTTPServer(server_address, GlobeTrotterRequestHandler)
     _logger.info(f"GlobeTrotter Server running at http://127.0.0.1:{port}")
     try:
         httpd.serve_forever()
@@ -2731,3 +2733,4 @@ def run_server(port=8069):
 
 if __name__ == '__main__':
     run_server(8069)
+
