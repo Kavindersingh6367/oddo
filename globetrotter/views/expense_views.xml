@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Expense Tree View -->
+    <record id="view_globetrotter_expense_tree" model="ir.ui.view">
+        <field name="name">globetrotter.expense.tree</field>
+        <field name="model">globetrotter.expense</field>
+        <field name="arch" type="xml">
+            <tree string="Trip Expenses &amp; Logistics" editable="bottom">
+                <field name="date"/>
+                <field name="trip_id"/>
+                <field name="stop_id"/>
+                <field name="category" widget="badge"/>
+                <field name="name"/>
+                <field name="amount" sum="Total"/>
+                <field name="notes"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Expense Pivot View -->
+    <record id="view_globetrotter_expense_pivot" model="ir.ui.view">
+        <field name="name">globetrotter.expense.pivot</field>
+        <field name="model">globetrotter.expense</field>
+        <field name="arch" type="xml">
+            <pivot string="Expense Analytics">
+                <field name="trip_id" type="row"/>
+                <field name="category" type="col"/>
+                <field name="amount" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- Action Window for Expenses -->
+    <record id="action_globetrotter_expenses" model="ir.actions.act_window">
+        <field name="name">Expenses &amp; Logistics</field>
+        <field name="res_model">globetrotter.expense</field>
+        <field name="view_mode">tree,pivot</field>
+    </record>
+
+    <menuitem id="menu_globetrotter_expense_list"
+              name="All Expenses"
+              parent="menu_globetrotter_expenses"
+              action="action_globetrotter_expenses"
+              sequence="1"/>
+</odoo>

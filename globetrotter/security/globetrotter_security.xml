@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+        <!-- Security Category -->
+        <record id="module_category_globetrotter" model="ir.module.category">
+            <field name="name">GlobeTrotter</field>
+            <field name="description">Travel Planning and Itinerary Management</field>
+            <field name="sequence">25</field>
+        </record>
+
+        <!-- User Group -->
+        <record id="group_globetrotter_user" model="res.groups">
+            <field name="name">GlobeTrotter Traveler</field>
+            <field name="category_id" ref="module_category_globetrotter"/>
+            <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+        </record>
+
+        <!-- Manager / Admin Group -->
+        <record id="group_globetrotter_manager" model="res.groups">
+            <field name="name">GlobeTrotter Administrator</field>
+            <field name="category_id" ref="module_category_globetrotter"/>
+            <field name="implied_ids" eval="[(4, ref('group_globetrotter_user'))]"/>
+            <field name="users" eval="[(4, ref('base.user_root')), (4, ref('base.user_admin'))]"/>
+        </record>
+    </data>
+
+    <data noupdate="1">
+        <!-- Record Rule: User can only read/write their own Trips -->
+        <record id="rule_globetrotter_trip_user" model="ir.rule">
+            <field name="name">GlobeTrotter: User Own Trips</field>
+            <field name="model_id" ref="model_globetrotter_trip"/>
+            <field name="domain_force">['|', ('user_id', '=', user.id), ('is_public', '=', True)]</field>
+            <field name="groups" eval="[(4, ref('group_globetrotter_user'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+
+        <!-- Record Rule: Manager can see all Trips -->
+        <record id="rule_globetrotter_trip_manager" model="ir.rule">
+            <field name="name">GlobeTrotter: Manager All Trips</field>
+            <field name="model_id" ref="model_globetrotter_trip"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_globetrotter_manager'))]"/>
+        </record>
+
+        <!-- Record Rule: User can only see/modify their own trip stops -->
+        <record id="rule_globetrotter_stop_user" model="ir.rule">
+            <field name="name">GlobeTrotter: User Own Stops</field>
+            <field name="model_id" ref="model_globetrotter_trip_stop"/>
+            <field name="domain_force">['|', ('trip_id.user_id', '=', user.id), ('trip_id.is_public', '=', True)]</field>
+            <field name="groups" eval="[(4, ref('group_globetrotter_user'))]"/>
+        </record>
+
+        <!-- Record Rule: User can only see/modify their own trip activities -->
+        <record id="rule_globetrotter_trip_activity_user" model="ir.rule">
+            <field name="name">GlobeTrotter: User Own Trip Activities</field>
+            <field name="model_id" ref="model_globetrotter_trip_activity"/>
+            <field name="domain_force">['|', ('trip_id.user_id', '=', user.id), ('trip_id.is_public', '=', True)]</field>
+            <field name="groups" eval="[(4, ref('group_globetrotter_user'))]"/>
+        </record>
+
+        <!-- Record Rule: User can only see/modify their own expenses -->
+        <record id="rule_globetrotter_expense_user" model="ir.rule">
+            <field name="name">GlobeTrotter: User Own Expenses</field>
+            <field name="model_id" ref="model_globetrotter_expense"/>
+            <field name="domain_force">['|', ('trip_id.user_id', '=', user.id), ('trip_id.is_public', '=', True)]</field>
+            <field name="groups" eval="[(4, ref('group_globetrotter_user'))]"/>
+        </record>
+    </data>
+</odoo>

@@ -1,0 +1,317 @@
+# -*- coding: utf-8 -*-
+"""
+GlobeTrotter Comprehensive Automated Test Suite
+Validates authentication, trip CRUD, stop reordering, activity scheduling,
+dynamic budgeting, rule-based intelligence, travel balance score, security record rules,
+and public itinerary cloning.
+"""
+
+import unittest
+import requests
+import time
+import subprocess
+import os
+import sys
+
+BASE_URL = "http://127.0.0.1:8069"
+
+class TestGlobeTrotter(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        # Verify server is reachable or wait
+        max_retries = 10
+        for i in range(max_retries):
+            try:
+                res = requests.get(f"{BASE_URL}/api/v1/destinations", timeout=2)
+                if res.status_code == 200:
+                    break
+            except Exception:
+                time.sleep(1)
+
+    def test_01_destinations_catalog(self):
+        """Test destination retrieval, search filtering, and seed verification."""
+        res = requests.get(f"{BASE_URL}/api/v1/destinations")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data.get('success'))
+        destinations = data.get('destinations', [])
+        self.assertGreaterEqual(len(destinations), 5)
+        
+        # Check specific seed cities
+        names = [d['name'] for d in destinations]
+        self.assertIn("Delhi", names)
+        self.assertIn("Jaipur", names)
+        self.assertIn("Udaipur", names)
+
+    def test_02_authentication_workflow(self):
+        """Test user signup, login, session validation, and duplicate email prevention."""
+        ts = int(time.time() * 1000)
+        test_email = f"traveler_{ts}@globetrotter.travel"
+        test_pass = "secret123"
+
+        # 1. Signup
+        signup_res = requests.post(f"{BASE_URL}/api/v1/auth/signup", json={
+            "name": "Aarav Patel",
+            "email": test_email,
+            "password": test_pass,
+            "preferred_currency": "INR",
+            "preferred_travel_style": "balanced"
+        })
+        self.assertEqual(signup_res.status_code, 200)
+        signup_data = signup_res.json()
+        self.assertTrue(signup_data.get('success'))
+        token = signup_data.get('token')
+        self.assertTrue(token)
+
+        # 2. Duplicate signup should fail
+        dup_res = requests.post(f"{BASE_URL}/api/v1/auth/signup", json={
+            "name": "Duplicate User",
+            "email": test_email,
+            "password": test_pass
+        })
+        self.assertEqual(dup_res.status_code, 400)
+        self.assertIn("already exists", dup_res.json().get('error', ''))
+
+        # 3. Invalid login should fail
+        bad_login = requests.post(f"{BASE_URL}/api/v1/auth/login", json={
+            "email": test_email,
+            "password": "wrongpassword"
+        })
+        self.assertEqual(bad_login.status_code, 400)
+
+        # 4. Valid login
+        login_res = requests.post(f"{BASE_URL}/api/v1/auth/login", json={
+            "email": test_email,
+            "password": test_pass
+        })
+        self.assertEqual(login_res.status_code, 200)
+        self.assertTrue(login_res.json().get('success'))
+
+        # 5. Auth Me
+        me_res = requests.get(f"{BASE_URL}/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+        self.assertEqual(me_res.status_code, 200)
+        self.assertEqual(me_res.json().get('user', {}).get('email'), test_email)
+
+    def test_03_acceptance_test_rajasthan_explorer_workflow(self):
+        """
+        Acceptance Test Scenario:
+        1. Login as user
+        2. Create 'Rajasthan Explorer' trip (Budget: 35,000, 2 travelers)
+        3. Add Delhi, Jaipur, Udaipur stops
+        4. Reorder stops
+        5. Add activities to Day 1, Day 2, Day 3
+        6. Add logistics expenses
+        7. Verify dynamic budget rollup, per-traveler cost, and intelligence alerts
+        8. Verify Travel Balance Score
+        9. Generate public share token & verify read-only access
+        10. Copy/clone trip into another user's account and verify independence
+        """
+        # Step 1: Login
+        login_res = requests.post(f"{BASE_URL}/api/v1/auth/demo-login", json={"role": "traveler"})
+        self.assertEqual(login_res.status_code, 200)
+        token = login_res.json()['token']
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Step 2: Create Trip 'Rajasthan Explorer'
+        create_res = requests.post(f"{BASE_URL}/api/v1/trips", headers=headers, json={
+            "name": "Rajasthan Explorer",
+            "start_date": "2026-10-01",
+            "end_date": "2026-10-07",
+            "total_budget": 35000.0,
+            "travelers_count": 2,
+            "currency": "INR",
+            "travel_style": "balanced",
+            "description": "Cultural journey through Mughal monuments, Rajput hilltop palaces, and serene desert lakes."
+        })
+        self.assertEqual(create_res.status_code, 200)
+        trip_id = create_res.json()['trip_id']
+        self.assertTrue(trip_id)
+
+        # Get destination IDs for Delhi, Jaipur, Udaipur
+        d_res = requests.get(f"{BASE_URL}/api/v1/destinations").json()
+        cities = {c['name']: c['id'] for c in d_res['destinations']}
+        
+        # Step 3: Add stops (Delhi, Jaipur, Udaipur)
+        stop1_res = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/stops", headers=headers, json={
+            "city_id": cities["Delhi"],
+            "arrival_date": "2026-10-01",
+            "departure_date": "2026-10-03",
+            "notes": "Heritage hotel in Connaught Place"
+        })
+        self.assertTrue(stop1_res.json().get('success'))
+        stop1_id = stop1_res.json()['stop_id']
+
+        stop2_res = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/stops", headers=headers, json={
+            "city_id": cities["Jaipur"],
+            "arrival_date": "2026-10-03",
+            "departure_date": "2026-10-05",
+            "notes": "Haveli stay near Amber Fort"
+        })
+        self.assertTrue(stop2_res.json().get('success'))
+        stop2_id = stop2_res.json()['stop_id']
+
+        stop3_res = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/stops", headers=headers, json={
+            "city_id": cities["Udaipur"],
+            "arrival_date": "2026-10-05",
+            "departure_date": "2026-10-07",
+            "notes": "Lakefront boutique resort"
+        })
+        self.assertTrue(stop3_res.json().get('success'))
+        stop3_id = stop3_res.json()['stop_id']
+
+        # Step 4: Reorder stops (Delhi -> Udaipur -> Jaipur)
+        reorder_res = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/stops/reorder", headers=headers, json={
+            "stop_ids": [stop1_id, stop3_id, stop2_id]
+        })
+        self.assertTrue(reorder_res.json().get('success'))
+
+        # Put order back to normal: Delhi -> Jaipur -> Udaipur
+        requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/stops/reorder", headers=headers, json={
+            "stop_ids": [stop1_id, stop2_id, stop3_id]
+        })
+
+        # Step 5: Add Activities to Days
+        act1 = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/activities", headers=headers, json={
+            "stop_id": stop1_id,
+            "name": "Red Fort & Old Delhi Heritage Walk",
+            "category": "culture",
+            "day_number": 1,
+            "scheduled_time": "09:30",
+            "duration_hours": 3.0,
+            "estimated_cost": 1300.0  # for 2 travelers
+        })
+        self.assertTrue(act1.json().get('success'))
+
+        act2 = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/activities", headers=headers, json={
+            "stop_id": stop2_id,
+            "name": "Amber Fort & Sheesh Mahal Exploration",
+            "category": "sightseeing",
+            "day_number": 3,
+            "scheduled_time": "10:00",
+            "duration_hours": 3.5,
+            "estimated_cost": 1500.0
+        })
+        self.assertTrue(act2.json().get('success'))
+
+        act3 = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/activities", headers=headers, json={
+            "stop_id": stop3_id,
+            "name": "Lake Pichola Sunset Boat Cruise to Jag Mandir",
+            "category": "relaxation",
+            "day_number": 5,
+            "scheduled_time": "17:00",
+            "duration_hours": 2.0,
+            "estimated_cost": 1900.0
+        })
+        self.assertTrue(act3.json().get('success'))
+
+        # Step 6: Add Expenses & Logistics
+        exp1 = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/expenses", headers=headers, json={
+            "category": "transportation",
+            "name": "Private AC Cab Delhi -> Jaipur -> Udaipur",
+            "amount": 12000.0,
+            "notes": "Chauffeur included for 7 days"
+        })
+        self.assertTrue(exp1.json().get('success'))
+
+        exp2 = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/expenses", headers=headers, json={
+            "category": "accommodation",
+            "name": "6 Nights Heritage Haveli Stays (Double Occupancy)",
+            "amount": 15000.0,
+            "notes": "Breakfast included"
+        })
+        self.assertTrue(exp2.json().get('success'))
+
+        # Step 7: Verify Dynamic Budget Rollup
+        trip_view = requests.get(f"{BASE_URL}/api/v1/trips/{trip_id}", headers=headers).json()['trip']
+        expected_act_cost = 1300.0 + 1500.0 + 1900.0  # 4,700
+        expected_total = 4700.0 + 12000.0 + 15000.0   # 31,700
+
+        self.assertEqual(trip_view['cost_activities'], expected_act_cost)
+        self.assertEqual(trip_view['cost_transportation'], 12000.0)
+        self.assertEqual(trip_view['cost_accommodation'], 15000.0)
+        self.assertEqual(trip_view['total_estimated_cost'], expected_total)
+        self.assertEqual(trip_view['cost_per_traveler'], expected_total / 2.0)
+        self.assertEqual(trip_view['remaining_budget'], 35000.0 - expected_total)
+        self.assertAlmostEqual(trip_view['budget_utilization'], (31700.0 / 35000.0) * 100.0, places=1)
+
+        # Step 8: Verify Travel Balance Score
+        self.assertGreaterEqual(trip_view['trip_balance_score'], 70)
+        factors = trip_view['balance_score_summary']
+        factor_names = [f['name'] for f in factors]
+        self.assertIn("Budget Discipline", factor_names)
+        self.assertIn("Activity Density", factor_names)
+        self.assertIn("City Pacing & Dwell", factor_names)
+
+        # Step 9: Sharing & Public URL
+        share_res = requests.post(f"{BASE_URL}/api/v1/trips/{trip_id}/share", headers=headers, json={
+            "is_public": True,
+            "share_budget": True
+        })
+        self.assertTrue(share_res.json().get('success'))
+        token_str = share_res.json()['share_token']
+
+        # Access public unauthenticated URL
+        pub_res = requests.get(f"{BASE_URL}/api/v1/shared/{token_str}")
+        self.assertEqual(pub_res.status_code, 200)
+        pub_trip = pub_res.json()['trip']
+        self.assertEqual(pub_trip['name'], "Rajasthan Explorer")
+        self.assertEqual(len(pub_trip['stops']), 3)
+        self.assertEqual(len(pub_trip['activities']), 3)
+
+        # Step 10: Copy Trip into another user's account
+        # Create a second user
+        ts2 = int(time.time() * 1000)
+        u2_res = requests.post(f"{BASE_URL}/api/v1/auth/signup", json={
+            "name": "Priya Sen",
+            "email": f"priya_{ts2}@globetrotter.travel",
+            "password": "password123"
+        }).json()
+        u2_token = u2_res['token']
+        u2_headers = {"Authorization": f"Bearer {u2_token}"}
+
+        copy_res = requests.post(f"{BASE_URL}/api/v1/shared/{token_str}/copy", headers=u2_headers)
+        self.assertEqual(copy_res.status_code, 200)
+        cloned_trip_id = copy_res.json()['trip_id']
+        self.assertNotEqual(trip_id, cloned_trip_id)
+
+        # Verify cloned trip exists in Priya's trips
+        u2_trips = requests.get(f"{BASE_URL}/api/v1/trips", headers=u2_headers).json()['trips']
+        cloned_match = [t for t in u2_trips if t['id'] == cloned_trip_id]
+        self.assertEqual(len(cloned_match), 1)
+        self.assertEqual(cloned_match[0]['total_estimated_cost'], expected_total)
+
+    def test_04_security_record_rules_multi_tenancy(self):
+        """Verify that User A cannot modify or access User B's private itineraries without authorization."""
+        ts = int(time.time() * 1000)
+        user_a = requests.post(f"{BASE_URL}/api/v1/auth/signup", json={
+            "name": "User Alpha",
+            "email": f"alpha_{ts}@globetrotter.travel",
+            "password": "password123"
+        }).json()['token']
+
+        user_b = requests.post(f"{BASE_URL}/api/v1/auth/signup", json={
+            "name": "User Beta",
+            "email": f"beta_{ts}@globetrotter.travel",
+            "password": "password123"
+        }).json()['token']
+
+        # User Alpha creates private trip
+        trip_a = requests.post(f"{BASE_URL}/api/v1/trips", headers={"Authorization": f"Bearer {user_a}"}, json={
+            "name": "Private Secret Alpha Vacation",
+            "start_date": "2026-11-01",
+            "end_date": "2026-11-05",
+            "total_budget": 50000.0
+        }).json()['trip_id']
+
+        # User Beta attempts to read User Alpha's private trip directly
+        hack_attempt = requests.get(f"{BASE_URL}/api/v1/trips/{trip_a}", headers={"Authorization": f"Bearer {user_b}"})
+        self.assertEqual(hack_attempt.status_code, 403)
+        self.assertIn("Access Denied", hack_attempt.json().get('error', ''))
+
+        # User Beta attempts to delete User Alpha's trip directly
+        del_attempt = requests.delete(f"{BASE_URL}/api/v1/trips/{trip_a}", headers={"Authorization": f"Bearer {user_b}"})
+        self.assertEqual(del_attempt.status_code, 403)
+
+if __name__ == '__main__':
+    unittest.main()

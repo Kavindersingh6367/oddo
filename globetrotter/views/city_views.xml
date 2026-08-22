@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- City Tree View -->
+    <record id="view_globetrotter_city_tree" model="ir.ui.view">
+        <field name="name">globetrotter.city.tree</field>
+        <field name="model">globetrotter.city</field>
+        <field name="arch" type="xml">
+            <tree string="Destinations">
+                <field name="name"/>
+                <field name="country"/>
+                <field name="region" widget="badge"/>
+                <field name="cost_index"/>
+                <field name="popularity" widget="progressbar"/>
+                <field name="recommended_duration_days" string="Rec. Days"/>
+                <field name="activity_count" string="Activities"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- City Form View -->
+    <record id="view_globetrotter_city_form" model="ir.ui.view">
+        <field name="name">globetrotter.city.form</field>
+        <field name="model">globetrotter.city</field>
+        <field name="arch" type="xml">
+            <form string="Destination City">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button class="oe_stat_button" icon="fa-ticket" type="action">
+                            <field name="activity_count" widget="statinfo" string="Activities"/>
+                        </button>
+                        <button class="oe_stat_button" icon="fa-globe" type="action">
+                            <field name="total_trips_count" widget="statinfo" string="Trips"/>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only" string="City Name"/>
+                        <h1><field name="name" placeholder="e.g. Jaipur"/></h1>
+                        <h3><field name="country" placeholder="e.g. India"/></h3>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="region"/>
+                            <field name="cost_index"/>
+                            <field name="popularity"/>
+                            <field name="recommended_duration_days"/>
+                        </group>
+                        <group>
+                            <field name="latitude"/>
+                            <field name="longitude"/>
+                            <field name="travel_styles"/>
+                            <field name="cover_image"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="description"/>
+                    </group>
+                    <notebook>
+                        <page string="Curated Activities" name="activities">
+                            <field name="activity_ids">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="category" widget="badge"/>
+                                    <field name="duration_hours" string="Duration (h)"/>
+                                    <field name="estimated_cost" string="Est. Cost"/>
+                                    <field name="popularity" widget="progressbar"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action Window for Cities -->
+    <record id="action_globetrotter_destinations" model="ir.actions.act_window">
+        <field name="name">Destinations</field>
+        <field name="res_model">globetrotter.city</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <menuitem id="menu_globetrotter_city_list"
+              name="All Destinations"
+              parent="menu_globetrotter_destinations"
+              action="action_globetrotter_destinations"
+              sequence="1"/>
+</odoo>

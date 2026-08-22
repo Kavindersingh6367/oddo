@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Trip Tree View -->
+    <record id="view_globetrotter_trip_tree" model="ir.ui.view">
+        <field name="name">globetrotter.trip.tree</field>
+        <field name="model">globetrotter.trip</field>
+        <field name="arch" type="xml">
+            <tree string="Trips" decoration-info="status=='upcoming'" decoration-success="status=='ongoing'" decoration-muted="status=='completed'">
+                <field name="name"/>
+                <field name="user_id" widget="many2one_avatar_user"/>
+                <field name="start_date"/>
+                <field name="end_date"/>
+                <field name="duration_days" string="Days"/>
+                <field name="stops_count" string="Stops"/>
+                <field name="travelers_count" string="Travelers"/>
+                <field name="total_budget" widget="monetary" options="{'currency_field': 'currency'}"/>
+                <field name="total_estimated_cost" widget="monetary" options="{'currency_field': 'currency'}"/>
+                <field name="budget_utilization" widget="progressbar"/>
+                <field name="trip_balance_score" widget="badge" decoration-success="trip_balance_score &gt;= 75" decoration-warning="trip_balance_score &gt;= 50 and trip_balance_score &lt; 75" decoration-danger="trip_balance_score &lt; 50"/>
+                <field name="status" widget="badge" decoration-info="status=='upcoming'" decoration-success="status=='ongoing'" decoration-muted="status=='completed'" decoration-warning="status=='draft'"/>
+                <field name="currency" invisible="1"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Trip Form View -->
+    <record id="view_globetrotter_trip_form" model="ir.ui.view">
+        <field name="name">globetrotter.trip.form</field>
+        <field name="model">globetrotter.trip</field>
+        <field name="arch" type="xml">
+            <form string="Itinerary Planner">
+                <header>
+                    <button name="action_generate_share_token" string="Generate Public Share Link" type="object" class="oe_highlight" icon="fa-share-alt"/>
+                    <button name="action_duplicate_trip" string="Duplicate Itinerary" type="object" icon="fa-copy"/>
+                    <field name="status" widget="statusbar" statusbar_visible="draft,upcoming,ongoing,completed"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button class="oe_stat_button" icon="fa-map-marker" type="action">
+                            <field name="stops_count" widget="statinfo" string="Cities / Stops"/>
+                        </button>
+                        <button class="oe_stat_button" icon="fa-calendar-check-o" type="action">
+                            <field name="activities_count" widget="statinfo" string="Activities"/>
+                        </button>
+                        <button class="oe_stat_button" icon="fa-tachometer" type="action">
+                            <field name="trip_balance_score" widget="statinfo" string="Balance Score"/>
+                        </button>
+                        <button class="oe_stat_button" icon="fa-money" type="action">
+                            <field name="total_estimated_cost" widget="statinfo" string="Estimated Cost"/>
+                        </button>
+                    </div>
+
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only" string="Itinerary Title"/>
+                        <h1>
+                            <field name="name" placeholder="e.g. Rajasthan Explorer"/>
+                        </h1>
+                    </div>
+
+                    <group>
+                        <group name="timing_group">
+                            <field name="start_date"/>
+                            <field name="end_date"/>
+                            <field name="duration_days"/>
+                            <field name="travel_style"/>
+                        </group>
+                        <group name="budget_group">
+                            <field name="user_id"/>
+                            <field name="currency"/>
+                            <field name="travelers_count"/>
+                            <field name="total_budget" widget="monetary" options="{'currency_field': 'currency'}"/>
+                        </group>
+                    </group>
+
+                    <group>
+                        <field name="description" placeholder="Notes, expectations, traveler goals..."/>
+                        <field name="cover_image" placeholder="https://images.unsplash.com/..."/>
+                    </group>
+
+                    <notebook>
+                        <!-- Tab 1: Itinerary Stops -->
+                        <page string="Stops &amp; Destinations" name="stops_page" icon="fa-map">
+                            <field name="stop_ids" mode="tree">
+                                <tree editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="city_id"/>
+                                    <field name="arrival_date"/>
+                                    <field name="departure_date"/>
+                                    <field name="duration_days" string="Days"/>
+                                    <field name="notes" placeholder="Hotel name, recommendations..."/>
+                                </tree>
+                            </field>
+                        </page>
+
+                        <!-- Tab 2: Scheduled Activities -->
+                        <page string="Day-wise Activities" name="activities_page" icon="fa-calendar">
+                            <field name="trip_activity_ids" mode="tree">
+                                <tree editable="bottom">
+                                    <field name="day_number" string="Day #"/>
+                                    <field name="scheduled_time" string="Time"/>
+                                    <field name="name" string="Activity"/>
+                                    <field name="stop_id" string="City Stop"/>
+                                    <field name="category" widget="badge"/>
+                                    <field name="duration_hours" string="Hours"/>
+                                    <field name="estimated_cost" widget="monetary" options="{'currency_field': 'currency'}"/>
+                                    <field name="notes"/>
+                                </tree>
+                            </field>
+                        </page>
+
+                        <!-- Tab 3: Expenses & Logistics -->
+                        <page string="Expenses &amp; Logistics" name="expenses_page" icon="fa-credit-card">
+                            <field name="expense_ids" mode="tree">
+                                <tree editable="bottom">
+                                    <field name="date"/>
+                                    <field name="category" widget="badge"/>
+                                    <field name="name" string="Description"/>
+                                    <field name="stop_id" string="Stop"/>
+                                    <field name="amount" widget="monetary" options="{'currency_field': 'currency'}"/>
+                                    <field name="notes"/>
+                                </tree>
+                            </field>
+                        </page>
+
+                        <!-- Tab 4: Budget Engine & Financial Intelligence -->
+                        <page string="Budget &amp; Intelligence" name="budget_page" icon="fa-line-chart">
+                            <group>
+                                <group string="Cost Rollup">
+                                    <field name="cost_transportation" widget="monetary" options="{'currency_field': 'currency'}"/>
+                                    <field name="cost_accommodation" widget="monetary" options="{'currency_field': 'currency'}"/>
+                                    <field name="cost_activities" widget="monetary" options="{'currency_field': 'currency'}"/>
+                                    <field name="cost_food" widget="monetary" options="{'currency_field': 'currency'}"/>
+                                    <field name="cost_miscellaneous" widget="monetary" options="{'currency_field': 'currency'}"/>
+                                </group>
+                                <group string="Key Metrics">
+                                    <field name="total_estimated_cost" widget="monetary" options="{'currency_field': 'currency'}"/>
+                                    <field name="cost_per_traveler" widget="monetary" options="{'currency_field': 'currency'}"/>
+                                    <field name="cost_per_day" widget="monetary" options="{'currency_field': 'currency'}"/>
+                                    <field name="remaining_budget" widget="monetary" options="{'currency_field': 'currency'}"/>
+                                    <field name="budget_utilization" widget="progressbar"/>
+                                </group>
+                            </group>
+                            <group string="Intelligence Insights &amp; Pacing Factors">
+                                <field name="budget_intelligence_alerts" widget="text" readonly="1"/>
+                                <field name="balance_score_summary" widget="text" readonly="1"/>
+                            </group>
+                        </page>
+
+                        <!-- Tab 5: Sharing & Public Access -->
+                        <page string="Public Sharing" name="share_page" icon="fa-globe">
+                            <group>
+                                <field name="is_public"/>
+                                <field name="share_budget"/>
+                                <field name="share_token" readonly="1"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Trip Calendar View -->
+    <record id="view_globetrotter_trip_calendar" model="ir.ui.view">
+        <field name="name">globetrotter.trip.calendar</field>
+        <field name="model">globetrotter.trip</field>
+        <field name="arch" type="xml">
+            <calendar string="Itinerary Schedule" date_start="start_date" date_stop="end_date" color="user_id" mode="month">
+                <field name="name"/>
+                <field name="user_id"/>
+                <field name="total_budget"/>
+            </calendar>
+        </field>
+    </record>
+
+    <!-- Trip Action Window -->
+    <record id="action_globetrotter_trips" model="ir.actions.act_window">
+        <field name="name">Trips &amp; Itineraries</field>
+        <field name="res_model">globetrotter.trip</field>
+        <field name="view_mode">tree,form,calendar</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Plan your first adventure with GlobeTrotter!
+            </p>
+            <p>
+                Add destinations, schedule curated activities, calculate budgets, and share itineraries with friends.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_globetrotter_trip_list"
+              name="All Trips"
+              parent="menu_globetrotter_trips"
+              action="action_globetrotter_trips"
+              sequence="1"/>
+</odoo>

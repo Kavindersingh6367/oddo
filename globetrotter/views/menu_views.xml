@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Top-level GlobeTrotter Menu -->
+    <menuitem id="menu_globetrotter_root"
+              name="GlobeTrotter"
+              web_icon="globetrotter,static/description/icon.png"
+              sequence="10"/>
+
+    <!-- Submenus -->
+    <menuitem id="menu_globetrotter_trips"
+              name="My Itineraries"
+              parent="menu_globetrotter_root"
+              sequence="1"/>
+
+    <menuitem id="menu_globetrotter_destinations"
+              name="Destinations"
+              parent="menu_globetrotter_root"
+              sequence="2"/>
+
+    <menuitem id="menu_globetrotter_activities"
+              name="Experiences &amp; Activities"
+              parent="menu_globetrotter_root"
+              sequence="3"/>
+
+    <menuitem id="menu_globetrotter_expenses"
+              name="Expenses &amp; Budgets"
+              parent="menu_globetrotter_root"
+              sequence="4"/>
+
+    <menuitem id="menu_globetrotter_config"
+              name="Configuration"
+              parent="menu_globetrotter_root"
+              sequence="10"
+              groups="globetrotter.group_globetrotter_manager"/>
+</odoo>
